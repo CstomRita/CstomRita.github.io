@@ -1,2 +1,0 @@
-# Myblog
-Cst's Blog
