@@ -8,9 +8,11 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
   <!-- 文章内导航 -->
-  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-toc@1.0.0/dist/toc.css">
+  <link rel="stylesheet" href="https://unpkg.com/docsify-plugin-toc@1.3.1/dist/light.css">
   <!-- 导航栏折叠 -->
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/sidebar-folder.min.css" />
+  <!-- footbar -->
+  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/@sujaykumarh/docsify-plugin-footer@1.x/dist/plugin.min.css">
 </head>
 <body>
 <!--   <nav>
@@ -22,7 +24,7 @@
       name: '',
       repo: 'https://github.com/CstomRita/CstomRita.github.io',
       loadSidebar: true,
-      subMaxLevel: 5,
+      subMaxLevel: 3,
       sidebarDisplayLevel: 1, // set sidebar display level
       coverpage: true,
       autoHeader: true,
@@ -54,18 +56,39 @@
       },
       //文章内导航配置
       toc: {
-        scope: '.markdown-section',
-        headings: 'h1, h2, h3, h4, h5',
-        title: '导航',
+        tocMaxLevel: 3,
+        target: 'h2, h3, h4',
+        ignoreHeaders:  ['<!-- {docsify-ignore} -->', '<!-- {docsify-ignore-all} -->']
       },
     formatUpdated: '{YYYY}/{MM}/{DD} {HH}:{mm}',
+    // footbar
+    customPageFooter:{
+      showPoweredBy: true, // should show powered by docsify at right
+      copyrightYear: '2023', // show copyright year, default current year.
+      showCopyright: true,  // set to false to hide default copyright
+      copyright: "copyright",  // set this to html string to use custom copyrihgt section
+      copyrightOwnerName: 'Cst',
+      copyrightOwnerLink: 'https://github.com/CstomRita',
+      copyrightExtra: "[--------沉淀..厚积方能薄发--------]",
+    },
+    // autoheader，暂时未用
+    autoHeaders: {
+    separator: "other",  
+    custom:    ".",
+    levels:  {
+      start:  '1',
+      finish: '5'
+    },
+    scope: '#main',
+    debug:  false
+  }
     }
   </script>
   <!-- Docsify v4 -->
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
   <!-- 文章内导航 -->
-  <script src="//cdn.jsdelivr.net/npm/docsify-toc@1.0.0/dist/toc.js"></script>
-  <!-- 引入搜素插件 -->
+  <script src="https://unpkg.com/docsify-plugin-toc@1.3.1/dist/docsify-plugin-toc.min.js"></script>
+   <!-- 引入搜素插件 -->
   <script src="//cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
   <!-- 代码高亮:引入其他语言扩展 -->
  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
@@ -85,6 +108,9 @@
 <script src="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/docsify-sidebar-collapse.min.js"></script>
 <!-- jsDelivr -->
 <script src="https://cdn.jsdelivr.net/gh/Sumsung524/docsify-backTop/dist/docsify-backTop.min.js"></script>
-
+<!-- footbar -->
+<script src="//cdn.jsdelivr.net/npm/@sujaykumarh/docsify-plugin-footer@1.x/dist/plugin.min.js"></script>
+<!-- jsDelivr -->
+<script src="https://cdn.jsdelivr.net/npm/@markbattistella/docsify-autoheaders@latest"></script>
 </body>
 </html>
