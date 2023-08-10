@@ -1,6 +1,10 @@
+<p align="right">update time : {docsify-updated}</p>
+
 ![image-20230809153419474](Redis.assets/image-20230809153419474.png)
 
 //上面的思维导图重新整理
+
+
 
 # 基础用法
 
@@ -46,7 +50,7 @@ String类型是二进制安全的，意思是 redis 的 string 可以包含任�
 
 一个key对应着一个双端链表，可以选择从队头或者队尾插入/弹出元素，链表中的元素可以重复出现。
 
-<img src="Redis.assets/image-20230809205245567.png" alt="image-20230809205245567" style="zoom:25%;" />
+![image-20230809153419474](Redis.assets/image-20230810110803656.png)
 
 #### 命令使用
 
@@ -83,7 +87,7 @@ String类型是二进制安全的，意思是 redis 的 string 可以包含任�
 
 key : {filed1:value1 ; filed2:value2....}
 
-<img src="Redis.assets/image-20230809181353898.png" alt="image-20230809181353898" style="zoom: 25%;" />
+![image-20230810111637871](Redis.assets/image-20230810111637871.png)
 
 #### 命令使用
 
@@ -106,7 +110,7 @@ String 类型的无序集合，集合成员是唯一的，这就意味着集合�
 
 一个key对用一个String的无序集合。
 
-<img src="Redis.assets/image-20230809181551691.png" alt="image-20230809181551691" style="zoom:25%;" />
+![image-20230810111637871](Redis.assets/image-20230809181551691.png)
 
 #### 命令使用(非全部)
 
@@ -134,7 +138,7 @@ String 类型的无序集合，集合成员是唯一的，这就意味着集合�
 
 不同的是每个元素都会关联一个 double 类型的分数。redis 正是通过分数来为集合中的成员进行从小到大的排序。
 
-<img src="Redis.assets/image-20230809182058009.png" alt="image-20230809182058009" style="zoom:25%;" />
+![image](Redis.assets/image-20230809182058009.png)
 
 #### 命令使用
 
@@ -190,6 +194,8 @@ HyperLogLog 在 Redis 中每个键占用的内容都是 12K，理论存储近似
 
 
 
+
+
 ### Bitmap（位存储）
 
 #### 结构
@@ -207,16 +213,3 @@ HyperLogLog 在 Redis 中每个键占用的内容都是 12K，理论存储近似
 
 
 ### geospatital (地理信息)
-
-
-
-# 内部机制
-
-## 持久化
-
-# 场景及优化
-
-
-
-
-
