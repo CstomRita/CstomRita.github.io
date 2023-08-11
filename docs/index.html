@@ -15,9 +15,6 @@
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/@sujaykumarh/docsify-plugin-footer@1.x/dist/plugin.min.css">
 </head>
 <body>
-<!--   <nav>
-    <a href="#/中间件"> 中间件</a>
-  </nav> -->
   <div id="app"></div>
   <script>
     window.$docsify = {
@@ -56,20 +53,20 @@
       },
       //文章内导航配置
       toc: {
-        tocMaxLevel: 3,
-        target: 'h2, h3, h4',
+        tocMaxLevel: 4,
+        target: 'h2, h3, h4,h5',
         ignoreHeaders:  ['<!-- {docsify-ignore} -->', '<!-- {docsify-ignore-all} -->']
       },
     formatUpdated: '{YYYY}/{MM}/{DD} {HH}:{mm}',
     // footbar
     customPageFooter:{
-      showPoweredBy: true, // should show powered by docsify at right
+      showPoweredBy: false, // should show powered by docsify at right
       copyrightYear: '2023', // show copyright year, default current year.
       showCopyright: true,  // set to false to hide default copyright
       copyright: "copyright",  // set this to html string to use custom copyrihgt section
       copyrightOwnerName: 'Cst',
       copyrightOwnerLink: 'https://github.com/CstomRita',
-      copyrightExtra: "[--------沉淀..厚积方能薄发--------]",
+      copyrightExtra: "--------沉淀......厚积方能薄发--------",
     },
     // autoheader，暂时未用
     autoHeaders: {
