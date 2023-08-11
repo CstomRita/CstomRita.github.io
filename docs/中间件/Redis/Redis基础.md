@@ -1,5 +1,9 @@
+@autoHeader: 2.1.1.1.1.1
+
+
 <p align="right">update time : {docsify-updated}</p>
-@autoHeader:1
+
+
 ## 数据类型
 
 ### 基础数据类型和用法

@@ -1,8 +1,9 @@
+@autoHeader: 2.1.1.1.1.1
+
+
 <p align="right">update time : {docsify-updated}</p>
 
-@autoHeader:1
-
-##缓存应用
+## 缓存应用
 
 在高并发的业务场景下，数据库大多数情况都是用户并发访问最薄弱的环节。
 
@@ -72,13 +73,13 @@ Step1：Bit数组大小
 
 根据预估数据量n以及误判率fpp，bit数组大小的m的计算方式：
 
-![img](Redis%E5%AE%9E%E6%88%98.assets/16e112fbd079c208~tplv-t2oaga2asx-zoom-in-crop-mark:4536:0:0:0.image)
+![img](Redis%E5%AE%9E%E6%88%98.assets/333333.png)
 
 Step2：哈希函数选择，k个哈希函数都用不同的会有些麻烦，选择一个哈希函数，然后送入k个不同的参数
 
 预估数据量n以及bit数组长度m，可以得到一个hash函数的个数k
 
-![img](Redis%E5%AE%9E%E6%88%98.assets/16e112fbd09afadb~tplv-t2oaga2asx-zoom-in-crop-mark:4536:0:0:0.image)
+![img](Redis%E5%AE%9E%E6%88%98.assets/16e112fbd09afad.png)
 
 Step3：实现
 

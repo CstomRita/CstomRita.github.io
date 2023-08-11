@@ -8,9 +8,9 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0, minimum-scale=1.0">
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css">
   <!-- 文章内导航 -->
-  <link rel="stylesheet" href="https://unpkg.com/docsify-plugin-toc@1.3.1/dist/light.css">
+ <!--  <link rel="stylesheet" href="https://unpkg.com/docsify-plugin-toc@1.3.1/dist/light.css"> -->
   <!-- 导航栏折叠 -->
-  <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/sidebar-folder.min.css" />
+  <link rel="stylesheet" href="toc.css" />
   <!-- footbar -->
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/@sujaykumarh/docsify-plugin-footer@1.x/dist/plugin.min.css">
 </head>
@@ -60,7 +60,7 @@
     formatUpdated: '{YYYY}/{MM}/{DD} {HH}:{mm}',
     // footbar
     customPageFooter:{
-      showPoweredBy: false, // should show powered by docsify at right
+      showPoweredBy: true, // should show powered by docsify at right
       copyrightYear: '2023', // show copyright year, default current year.
       showCopyright: true,  // set to false to hide default copyright
       copyright: "copyright",  // set this to html string to use custom copyrihgt section
@@ -68,18 +68,24 @@
       copyrightOwnerLink: 'https://github.com/CstomRita',
       copyrightExtra: "--------沉淀......厚积方能薄发--------",
     },
-    // autoheader，暂时未用
+    // autoheader
     autoHeaders: {
-    separator: "other",  
-    custom:    ".",
+    separator: 'other',  
+    custom: '.',
     levels:  {
-      start:  '1',
+      start: '2',
       finish: '5'
     },
     scope: '#main',
-    debug:  false
-  }
-    }
+    debug:  true
+  },
+  pagination: {
+    previousText: '上一章节',
+    nextText: '下一章节',
+    crossChapter: true,
+    crossChapterText: true,
+  },
+    };
   </script>
   <!-- Docsify v4 -->
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
@@ -108,6 +114,9 @@
 <!-- footbar -->
 <script src="//cdn.jsdelivr.net/npm/@sujaykumarh/docsify-plugin-footer@1.x/dist/plugin.min.js"></script>
 <!-- jsDelivr -->
-<script src="https://cdn.jsdelivr.net/npm/@markbattistella/docsify-autoheaders@latest"></script>
+<!-- locally -->
+<script src="docsify-autoheaders.min.js"></script>
+<!-- 分章节 -->
+<script src="//unpkg.com/docsify-pagination/dist/docsify-pagination.min.js"></script>
 </body>
 </html>
