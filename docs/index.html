@@ -84,8 +84,26 @@
     crossChapter: true,
     crossChapterText: true,
   },
+  //图片居中
+  markdown: {
+            renderer: {
+                image: function(href, title, text) {
+                    // 按照原来的渲染 img
+                    var image_html = this.origin.image.apply(this, arguments)
+                    // 用 figure 包一下图片，实现居中
+                    return '<figure>' + image_html + '</figure>'
+                }
+            }
+        }
     };
   </script>
+
+<style>
+  figure {
+      text-align: center
+  }
+</style>
+
   <!-- Docsify v4 -->
   <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
   <!-- 文章内导航 -->
@@ -108,7 +126,7 @@
  <script src="//unpkg.com/docsify-count/dist/countable.js"></script>
 <!-- plugins -->
 <script src="//cdn.jsdelivr.net/npm/docsify-sidebar-collapse/dist/docsify-sidebar-collapse.min.js"></script>
-<!-- jsDelivr -->
+<!-- back to top -->
 <script src="https://cdn.jsdelivr.net/gh/Sumsung524/docsify-backTop/dist/docsify-backTop.min.js"></script>
 <!-- footbar -->
 <script src="//cdn.jsdelivr.net/npm/@sujaykumarh/docsify-plugin-footer@1.x/dist/plugin.min.js"></script>
