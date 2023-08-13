@@ -12,6 +12,8 @@
   <!-- <link rel="stylesheet" href="./toc.css" />-->
   <!-- footbar -->
   <link rel="stylesheet" href="//cdn.jsdelivr.net/npm/@sujaykumarh/docsify-plugin-footer@1.x/dist/plugin.min.css">
+  <!-- theme -->
+  <link rel="stylesheet" href="https://unpkg.com/docsify-vuepress-theme/dist/style.min.css" />
 </head>
 <body>
   <div id="app"></div>
@@ -94,8 +96,26 @@
                     return '<figure>' + image_html + '</figure>'
                 }
             }
-        }
-    };
+        },
+
+    // markmap 暂时不适用当前结构
+    // plugins:[
+    //   function (hook, vm) {
+    //     hook.beforeEach(
+    //       function (mdstr) {
+    //         const prefix = document.location.pathname.endsWith('/') ? '' : '..';
+    //         const markmapUrl = new URL(prefix + 'markmap.html', document.location);
+    //         const markdownUrl = new URL(prefix + vm.route.file.replace("README","_sidebar"), document.location);
+    //         return `[MARKMAP](${markmapUrl}?md=${markdownUrl})\n` + mdstr;
+    //       }
+    //     );
+    //   }
+    // ],
+    
+
+
+    
+    }; //结尾的花括号
   </script>
 
 <style>
@@ -135,5 +155,9 @@
 <script src="https://cdn.jsdelivr.net/gh/CstomRita/CstomRita.github.io/docs/docsify-autoHeaders.min.js"></script>
 <!-- 分章节 -->
 <script src="//unpkg.com/docsify-pagination/dist/docsify-pagination.min.js"></script>
+<!-- theme -->
+<script src="https://unpkg.com/docsify-vuepress-theme/dist/index.min.js"></script>
+<!-- edit on github unused -->
+<!-- <script src="//cdn.jsdelivr.net/npm/docsify-edit-on-github"></script> -->
 </body>
 </html>
