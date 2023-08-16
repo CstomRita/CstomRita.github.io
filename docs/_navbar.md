@@ -1,12 +1,12 @@
 * 编程语言
   * [Java](编程语言/Java/)
 * 数据库
-  * [MySQL](数据/MySQL/)
+  * [MySQL](数据库/MySQL/)
   * [PostgreSQL](数据库/PostgreSQL/)
-  * [SQL语言](数据库/Java/)
+  * [SQL语言](数据库/SQL语言/)
 
 * 编程框架
-  * [Spring全家桶](编程框架/Spring全家桶/)
+  * [Spring系列](编程框架/Spring系列/)
   * [Mybatis](编程框架/Mybatis/)
 
 * 中间件
