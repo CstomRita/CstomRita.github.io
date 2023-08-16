@@ -1,3 +1,3 @@
 - Java
-  - [JVM](/编程语言/Java/JVM基础.md)
-  - [JVM](/编程语言/Java/JVM-GC.md)
+  - [JVM内存模型](/编程语言/Java/JVM内存模型.md)
+  - [垃圾回收机制](/编程语言/Java/GC.md)
