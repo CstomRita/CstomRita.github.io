@@ -1,29 +1,33 @@
+@autoHeader: 2.1.1.1.1.1
+
+<p align="right">update time : {docsify-updated}</p>
 
 
-# Kafka消息模型
 
-##  消息模型分类
+## Kafka消息模型
+
+###  消息模型分类
 
 点对点模式和发布订阅模式
 
 1. 点对点模型：一个生产者向一个特定的队列发布消息，只有一个消费者进行消费。生产者不需要在接收者消费时处于运行状态，接收者也不需要在消息发送时处于运行状态；多个消费者对于队列内的消息是竞争关系，每个消费者只能收到队列的一部分消息。
 2. 发布-订阅模型：一个生产者向一个特定的队列发布消息，0个或多个订阅者可以接收特定主题的消息；发布者需要创建一个主题，一个主题至少是一个队列组成的，每个消费者都能收到全量的消息。
 
-##  Kafka消息模型 --- 消费者组机制
+###  Kafka消息模型 --- 消费者组机制
 
 kafka中的两种消息模型，队列和发布订阅，就是通过consumer group实现的：
 
 - 队列模型：所有的Consumer实例都属于一个group，即一条消息仅被消费一次。[单播]
 - 发布/订阅模型：所有的Consumer实例都单独使用一个group，即一条消息会被广播到所有消费者。[广播]
 
-<img src="Kafka.assets/image-20230728164031475.png" alt="image-20230728164031475" style="zoom:50%;" />
+![iamge](Kafka.assets/image-20230728164031475.png)
 
 一个主题可以配置几个分区，生产者发送的消息分发到不同的分区中，消费者接收数据的时候是按照消费者组来接收的：
 
 1. 每个分区的消息只能被同一个消费者组中的同一个消费者消费。 --- 单播
 2. 每个分区的消息可以被不同消费者组里的消费者消费。 --- 广播
 
-##  消费者组分区分配策略
+###  消费者组分区分配策略
 
 Kafka有两种分配策略，一是roundrobin，一是range。最新还有一个StickyAssignor策略。
 
@@ -109,9 +113,9 @@ StickyAssignor分配算法的核心逻辑如下：
 
 
 
-#  Kafka存储结构
+##  Kafka存储结构
 
-##Kafka用什么存储消息
+###Kafka用什么存储消息
 
 Kafka 最终会选用 logging（日志文件）+ 哈希索引的结构来存储消息。
 
@@ -124,13 +128,13 @@ Kafka采用的Append追加写日志文件的方式，是满足写入操作并发
 
 在读操作中，需要有一个offset和对应消息的对应关系，也就是要建立一个哈希索引，由于都是顺序写入，没有必要为每个消息都建立哈希索引，所以采用了稀疏的哈希索引的方式，把消息将消息划分成若干个 block，只索引每个 block 第一条消息的 offset ，先根据大小关系找到对应 block，然后在 block 中顺序搜索。
 
-<img src="Kafka.assets/image-20230727104656231.png" alt="image-20230727104656231" style="zoom:30%;" />
+![iamge](Kafka.assets/image-20230727104656231.png)
 
-##  Kafka Topic下存储模型
+###  Kafka Topic下存储模型
 
 
 
-<img src="Kafka.assets/image-20230727103215733.png" alt="image-20230727103215733" style="zoom:33%;" />
+![iamge](Kafka.assets/image-20230727103215733.png)
 
 Kafka是面向主题的，分区 + 分段 + 索引三层结构
 
@@ -142,9 +146,9 @@ Kafka是面向主题的，分区 + 分段 + 索引三层结构
 
 > 日志文件的大小是Kafka **server.properties**设置的
 
-# Kafka架构模型
+## Kafka架构模型
 
-## Kafka包含的组件
+### Kafka包含的组件
 
 Kafka架构中的组件主要包括：
 
@@ -156,9 +160,9 @@ Kafka架构中的组件主要包括：
    1. 管理和协调Broker，broker的注册、出现故障的broker等
    2. 存储元数据，Kafka有多少topic、partition、consumer；topic各个partition的offset等
 
-## KafkaController
+### KafkaController
 
-### Controller的职责
+#### Controller的职责
 
 具备控制器身份的broker需要比其他普通的broker多一份职责，具体细节如下：
 
@@ -180,9 +184,9 @@ Kafka架构中的组件主要包括：
 
 4. 数据服务，更新集群的元数据信息，向其他 broker 提供数据服务。控制器上保存了最全的集群元数据信息，其他所有 broker 会定期接收控制器发来的元数据更新请求，从而更新其内存中的缓存数据。
 
-### Controller存储的信息有哪些
+#### Controller存储的信息有哪些
 
-<img src="Kafka.assets/image-20230727235213864.png" alt="image-20230727235213864" style="zoom:50%;" />
+![1](Kafka.assets/image-20230727235213864.png)
 
 broker controller 会提供数据服务，用于保存大量的 Kafka 集群数据。主要分为三类
 
@@ -194,7 +198,7 @@ Kafka 是离不开 ZooKeeper的，所以这些数据信息在 ZooKeeper 中也�
 
 每当控制器初始化时，它都会从 ZooKeeper 上读取对应的元数据并填充到自己的缓存中。
 
-### Controller选举机制
+#### Controller选举机制
 
 Kafka 当前选举控制器的规则是：==Kafka 集群中第一个启动的 broker 通过在 ZooKeeper 里创建一个临时节点 `/controller` 让自己成为 controller 控制器。==
 
@@ -202,7 +206,7 @@ Kafka 当前选举控制器的规则是：==Kafka 集群中第一个启动的 br
 
 如果控制器关闭或者与 ZooKeeper 断开链接，ZooKeeper 上的临时节点就会消失。集群中的其他节点收到 watch   对象发送控制器下线的消息后，其他 broker 节点都会尝试让自己去成为新的控制器。其他节点的创建规则和第一个节点的创建原则一致，都是第一个在 ZooKeeper 里成功创建控制器节点的 broker 会成为新的控制器，那么其他节点就会收到节点已存在的异常，然后在新的控制器节点上再次创建 watch 对象进行监听。
 
-#### 4 控制器脑裂是什么
+#### 控制器脑裂是什么
 
 如果控制器所在broker挂掉了或者Full GC停顿时间太长出现假死情况下，Kafka集群必须选举出新的控制器，但如果之前被取代的控制器又恢复正常了，它依旧是控制器身份，这样集群就会出现两个控制器，这就是控制器脑裂问题。
 
@@ -210,17 +214,17 @@ Kafka 当前选举控制器的规则是：==Kafka 集群中第一个启动的 br
 
 为了解决Controller脑裂问题，ZooKeeper中还有一个与Controller有关的持久节点/controller_epoch，存放的是一个整形值的epoch number（纪元编号，也称为隔离令牌），集群中每选举一次控制器，就会通过Zookeeper创建一个数值更大的epoch number，如果有broker收到比这个epoch数值小的数据，就会忽略消息。
 
-## Kafka多分区多副本架构
+### Kafka多分区多副本架构
 
-<img src="Kafka.assets/image-20230729080345040.png" alt="image-20230729080345040" style="zoom:50%;" />
+![image](Kafka.assets/image-20230729080345040.png)
 
 
 
-#  Kafka的分区机制【高吞吐】
+##  Kafka的分区机制【高吞吐】
 
 分区机制是kafka实现高吞吐的方式。
 
-## 分区个数
+### 分区个数
 
 从数据组织形式来说，kafka有三层形式，kafka有多个主题，每个主题有多个分区，每个分区又有多条消息。而每个分区可以分布到不同的机器上，这样一来，从服务端来说，分区可以实现高伸缩性，以及负载均衡，动态调节的能力。
 
@@ -230,7 +234,7 @@ Kafka 当前选举控制器的规则是：==Kafka 集群中第一个启动的 br
 2. 基准测试来测试，创建不同分区的topic，逐步压测测出最终的结果。
 3. 一般推荐确定分区数的方式就是broker机器数量的2~3倍。
 
-## 分区策略
+### 分区策略
 
 每个分区可以分布到不同的机器上，这样一来，从服务端来说，分区可以实现高伸缩性，以及负载均衡，动态调节的能力。
 
@@ -279,23 +283,23 @@ public int partition(String topic, Object key, byte[] keyBytes,
 
 
 
-# Kafka的副本机制【高可用】
+## Kafka的副本机制【高可用】
 
 副本机制是Kafka实现高可用的方式。
 
 在kafka中，每个主题可以有多个分区，每个分区又可以有多个副本。这多个副本中，只有一个是leader，而其他的都是follower副本。仅有leader副本可以对外提供服务。多个follower副本通常存放在和leader副本不同的broker中。通过这样的机制实现了高可用，当某台机器挂掉后，其他follower副本也能迅速”转正“，开始对外提供服务。
 
-##  kafka的副本都有哪些作用
+###  kafka的副本都有哪些作用
 
 在kafka中，实现副本的目的就是冗余备份，且仅仅是冗余备份，所有的读写请求都是由leader副本进行处理的。follower副本仅有一个功能，那就是从leader副本拉取消息，尽量让自己跟leader副本的内容一致。
 
-## follower副本为什么不对外提供服务
+### follower副本为什么不对外提供服务
 
 这个问题本质上是对性能和一致性的取舍。
 
 性能虽然提升了，但可能出现数据不一致的问题，例如现在写入一条数据到kafka主题a，消费者b从主题a消费数据，却发现消费不到，因为消费者b去读取的那个分区副本中，最新消息还没写入。而这个时候，另一个消费者c却可以消费到最新那条数据，因为它消费了leader副本。
 
-## leader副本挂掉后，如何选举新副本
+### leader副本挂掉后，如何选举新副本
 
 副本leader的选举是由kafka controller执行的。
 
@@ -316,13 +320,13 @@ public int partition(String topic, Object key, byte[] keyBytes,
    > 修改下面的配置，可以开启UncleanLeader选举策略，默认关闭。
    > unclean.leader.election.enable=true
 
-## 在ISR中保留的条件
+### 在ISR中保留的条件
 
 其实跟一个参数有关：replica.lag.time.max.ms。【副本同步最大时间】
 
 如果持续拉取速度慢于leader副本写入速度，慢于时间超过replica.lag.time.max.ms后，它就变成“非同步”副本，就会被踢出ISR副本集合中。但后面如何follower副本的速度慢慢提上来，那就又可能会重新加入ISR副本集合中了。
 
-## 触发ISR选举的时机
+### 触发ISR选举的时机
 
 1. Leader Replica失效：当Leader Replica出现故障或失去连接时选举。
 2. Broker岩机：当LeaderReplica所在的Broker节点发生故障或者岩机时，Kafka也会触发
@@ -335,9 +339,9 @@ public int partition(String topic, Object key, byte[] keyBytes,
 6. 手动触发：通过Kafka管理工具（kafka-preferred-replica-election.sh），可以手动触发选
    举，以平衡负载或实现集群维护。
 
-## 副本同步策略
+### 副本同步策略
 
-### 同步复制
+#### 同步复制
 
 过程如下：
 
@@ -353,7 +357,7 @@ public int partition(String topic, Object key, byte[] keyBytes,
 
 和同步复制的区别在于，leader 副本在写入本地log之后[即上面步骤2]，直接向客户端发送写入成功消息[上面步骤7]，不需要等待所有跟随者复制完成。
 
-##  副本分配策略
+###  副本分配策略
 
 分配副本应该处于哪些broker上，原则为：
 
@@ -361,7 +365,7 @@ public int partition(String topic, Object key, byte[] keyBytes,
 2. partition 的多个副本应该分配在不同的 Broker 上;
 3. 如果所有的 Broker 有机架信息的话, partition 的副本应该分配到不同的机架上。
 
-### 无机架分配
+#### 无机架分配
 
 所有的broker都没有配置机架信息
 
@@ -369,7 +373,7 @@ public int partition(String topic, Object key, byte[] keyBytes,
 2. 分配后面的分区,分区的第一个副本位置都是按照broker list顺序遍历的;
 3. 对于副本分配来说,每经历一轮Broker List的遍历，nextReplicaShit参数+1;
 
-<img src="Kafka.assets/image-20230729075252627.png" alt="image-20230729075252627" style="zoom:50%;" />
+![image](Kafka.assets/image-20230729075252627.png)
 
 > 上面是分配的情况,我们每一行每一行看, 每次都是先把每个分区的副本分配好的;
 >
@@ -380,7 +384,7 @@ public int partition(String topic, Object key, byte[] keyBytes,
 > 5. P5-1 再broker-0上,然后p5-2要跟p5-1间隔`nextReplicaShit=1`个位置,所以p5-2这时候在broker-2上,P5-3则在P5-2基础上顺推一位就行了,如果顺推的位置上已经有了副本,则继续顺推到没有当前分区副本的Broker
 > 6. 如果分区过多,有可能nextReplicaShift就变的挺大,在算第一个跟第二个副本的间隔的时候,不用把第一个副本算进去; 假如下面起始是 5，其中经历过的间隔就是 （ 1->2->3->4->1 ）所以PN-2就落在 BrokerLIst[2]上了
 
-<img src="Kafka.assets/image-20230729075556431.png" alt="image-20230729075556431" style="zoom:50%;" />
+![image](Kafka.assets/image-20230729075556431.png)
 
 
 
@@ -398,7 +402,7 @@ A：
 2. 新增分区的时候 是将Broker List 作了排序
 3. 执行分区副本重分配任务, 也是将BrokerList做了排序
 
-### 有机架分配
+#### 有机架分配
 
 所有的broker都配置了机架信息，如果出现部分broker配置了机架信息而另一部分没有配置的话，则会抛出AdminOperationException的异常，如果还想要顺利创建topic的话，此时需加上“–disable-rack-aware”
 
@@ -408,12 +412,11 @@ A：
 
 
 
-# 消费者组重平衡机制
+## 消费者组重平衡机制
 
-##  Kafka中有哪几种协调器
+###  Kafka中有哪几种协调器
 
-<img src="Kafka.assets/image-20230729081601345.png" alt="image-20230729081601345" style="zoom:50%;" />
-
+![11](Kafka.assets/image-20230729081601345.png)
 Kafka中主要有两种协调器：
 
 **消费组协调器**
@@ -446,7 +449,7 @@ Kafka中主要有两种协调器：
 
 客户端的消费者协调器和服务端的组协调器会通过心跳保持通信。
 
-## 消费者组状态机
+### 消费者组状态机
 
 ![image-20230729080628687](Kafka.assets/image-20230729080628687.png)
 
@@ -457,84 +460,9 @@ Kafka中主要有两种协调器：
 3. 消费者群组处于 PreparingRebalance 状态后，很不幸，没人玩儿了，所有消费者都离开了，这时候还可能会保留有消费者消费的位移数据，一旦位移数据过期或者被刷新，那么消费者群组就处于 `Dead` 状态了
 4. 在 `PreparingRebalance`或者 `CompletingRebalance` 或者 `Stable` 任意一种状态下发生位移主题分区 Leader 发生变更，群组会直接处于 Dead 状态
 
-## 重平衡
+### 重平衡
 
-见1.3消费者组分区分配策略，重新为消费者组内成员分配分区。
+即消费者组分区分配策略，重新为消费者组内成员分配分区。
 
 
-
-# 其他问题
-
-## 如何基于Kafka实现优先队列
-
-大致有以下方案
-
-（一）consumer 各自拉取，使用优先级队列重新缓冲。
-
-这种对内存要求很大，而且单纯靠内存，程序崩溃后难以找回未消费消息。
-
-（二）先拉取高优先级topic的数据，只要有就一直消费，直到没有数据再消费低一级topic。消费低一级topic的过程中，如果发现有高一级topic消息到来，则转向消费高优先级消息。
-
-该方案在高峰时段可能会导致低优先级消息完全失去消费机会，这种要看应用场景，比如在一些任务调度上，资源有限，高峰时段全部在高优先级任务上，也是符合设计的。
-
-（三）实现相对的有序，先不考虑优先级，在高中低优先级consumer中循环拉取一批次，在该批次消费中，优先消费优先级高的。
-
-该方案实现的是相对的有序，无法做到当高中低都有消息待消费时，集中全力先消费高优先级的消息。
-
-```java
-// 同时维护多个consumer
-private Map<Integer, KafkaConsumer<K, V>> consumers;
-public ConsumerRecords<K, V> poll(long pollTimeoutMs) {
-    Map<TopicPartition, List<ConsumerRecord<K, V>>> consumerRecords = 
-        new HashMap<TopicPartition, List<ConsumerRecord<K, V>>>();
-    long start = System.currentTimeMillis();
-    do {
-        // 每一次整体“拉取”，都调用每个“子”consumer 拉取一次
-        for (int i = maxPriority - 1; i >= 0; --i) {
-            ConsumerRecords<K, V> records = consumers.get(i).poll(0);
-            for (TopicPartition partition : records.partitions()) {
-                consumerRecords.put(partition, records.records(partition));
-            }
-        }
-    } while (consumerRecords.isEmpty() && System.currentTimeMillis() < (start + pollTimeoutMs));
-    ...
-}
-```
-
-## kafka的consumer是拉模式还是推模式
-
-producer将消息推送到broker，consumer从broker拉取消息。
-
-push模式的缺点：
-
-由broker决定消息推送的速率，对于不同消费速率的consumer就不太好处理了。消息系统都致力于让consumer以最大的速率最快速的消费消息，但不幸的是，push模式下，当broker推送的速率远大于consumer消费的速率时，consumer恐怕就要崩溃了
-
-pull模式的缺点：
-
-- broker需要在数据为空时阻塞
-- broker需要储存数据
-
-## Kafka哪种情况下会丢消息、如何避免
-
-###  生产者
-
-当生产者发送数据时，可以通过request.required.acks参数来设置数据可靠性的级别：
-
-- acks=0： 表示producer不需要等待任何broker确认收到消息的回复，就可以继续发送下一条消息。
-
-  性能最高，但是最容易丢消息。大数据统计报表场景，对性能要求很高，对数据丢失不敏感的情况可以用这种。
-
-- acks=1： 至少要等待leader已经成功将数据写入本地log，但是不需要等待所有follower是否成功写入。
-
-  这种情况下，如果follower没有成功备份数据，而此时leader又挂掉，则消息会丢失。
-
-- acks=-1或all： 这意味着leader需要等待所有备份(min.insync.replicas配置的备份个数)都成功写入日志，这种策略会保证只要有一个备份存活就不会丢失数据。
-
-  这是最强的数据保证。一般除非是金融级别，或跟钱打交道的场景才会使用这种配置。
-
-### 消费者
-
-如果消费这边配置的是自动提交，万一消费到数据还没处理完，就自动提交offset了，但是此时你consumer直接宕机了，未处理完的数据丢失了，下次也消费不到了。
-
-避免可以采用手动提交offset，确保消息成功消费之后再提交offset。
 
