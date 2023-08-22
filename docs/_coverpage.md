@@ -14,6 +14,6 @@
     | 🚴‍♂️ 本站总访客数：<span id="busuanzi_value_site_uv"></span> 人
 </span>
 
-网站运行时间：<span id="sitetime"></span>
+Hi，📚📎📎<span id="sitetime"></span>
 
 <br>
