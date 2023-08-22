@@ -4,11 +4,9 @@
 
 
 
-
-
 https://www.bmabk.com/index.php/post/142012.html
 
-## 组件说明类
+## 概念类
 
 ### Spring Cloud Netflix和Spring Cloud Alibaba包括哪些组件
 
@@ -31,6 +29,13 @@ https://www.bmabk.com/index.php/post/142012.html
 4、使用OpenFeign 作为声明式服务调用。
 
 5、使用Sentinel作为流量控制和熔断降级组件。
+
+### SpringCloud 和 SpringBoot有什么不同
+
+- SpringBoot专注于快速方便的开发单个个体微服务。SpringCloud是关注全局的微服务协调整理治理框架，它将SpringBoot开发的一个个单体微服务整合并管理起来，为各个微服务之间提供，配置管理、服务发现、断路器、路由、微代理、事件总线、全局锁、决策竞选、分布式会话等等集成服务
+
+- SpringBoot可以离开SpringCloud独立使用开发项目， 但是SpringCloud离不开SpringBoot ，属于依赖的关系。
+- SpringBoot专注于快速、方便的开发单个微服务个体，SpringCloud关注全局的服务治理框架。
 
 ## Nacos
 
