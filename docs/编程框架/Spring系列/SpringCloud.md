@@ -113,10 +113,6 @@ Data flow 是一个用于开发和执行大范围数据处理其模式包括ETL�
 
 
 
-作者：南山羊
-链接：https://www.jianshu.com/p/1326da1c523a
-来源：简书
-著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
 
 #### Spring Cloud Stream 
 
@@ -125,11 +121,6 @@ Data flow 是一个用于开发和执行大范围数据处理其模式包括ETL�
 Spring Cloud Stream是基于spring boot创建，用来建立单独的／工业级spring应用，使用spring integration提供与消息代理之间的连接。数据流操作开发包，封装了与Redis,Rabbit、Kafka等发送接收消息。
 
 
-
-作者：南山羊
-链接：https://www.jianshu.com/p/1326da1c523a
-来源：简书
-著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
 
 #### Spring Cloud Stream App Starters 
 
@@ -146,11 +137,6 @@ Spring Cloud Stream是基于spring boot创建，用来建立单独的／工业�
 ZooKeeper是一个分布式的，开放源码的分布式应用程序协调服务，是Google的Chubby一个开源的实现，是Hadoop和Hbase的重要组件。它是一个为分布式应用提供一致性服务的软件，提供的功能包括：配置维护、域名服务、分布式同步、组服务等。ZooKeeper的目标就是封装好复杂易出错的关键服务，将简单易用的接口和性能高效、功能稳定的系统提供给用户。
 
 
-
-作者：南山羊
-链接：https://www.jianshu.com/p/1326da1c523a
-来源：简书
-著作权归作者所有。商业转载请联系作者获得授权，非商业转载请注明出处。
 
 #### Spring Cloud Connectors
 

@@ -2,3 +2,4 @@
   - [MySQL基础](/数据库/MySQL/MySQL基础.md)
   - [MySQL核心机制](/数据库/MySQL/MySQL核心机制.md)
   - [MySQL实战](/数据库/MySQL/MySQL实战.md)
+  - [MySQL八股](/数据库/MySQL/MySQL八股.md)

@@ -1,3 +1,4 @@
 - Java
   - [JVM内存模型](/编程语言/Java/JVM内存模型.md)
   - [垃圾回收机制](/编程语言/Java/GC.md)
+  - [JVM八股](/编程语言/Java/JVM八股.md)
