@@ -494,7 +494,7 @@ Nacos底层负载均衡底层是通过Ribbon实现的，Ribbon中定义了负载
 
 Spring Cloud Alibaba Nacos 中已经内置了 Ribbon 框架了，引入Nacos无需再引入Ribbon依赖。
 
-Ribbon具体内容间[SpringCloudNetflix](./SpringCloudNetflix.md)
+Ribbon具体内容间[SpringCloudNetflix](编程框架/Spring系列/SpringCloudNetflix)
 
 ![image.png](SpringCloudAlibaba.assets/30578a30e90a01c1c2746ebb7d638421.png)
 
@@ -506,7 +506,7 @@ OpenFeign 声明式服务调用和负载均衡组件。
 
 OpenFeign 是基于 Feign 实现的，是 Spring Cloud 官方提供的注解式调用 REST 接口框架，OpenFeign/Feign 底层是基于 Ribbon 实现负载均衡的。
 
-OpenFegin具体内容间[SpringCloudNetflix](./SpringCloudNetflix.md)
+OpenFegin具体内容间[SpringCloudNetflix](编程框架/Spring系列/SpringCloudNetflix)
 
 ## Sentinel
 
