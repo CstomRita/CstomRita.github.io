@@ -14,28 +14,28 @@ https://www.bmabk.com/index.php/post/142012.html
 
 **Spring Cloud Alibaba主要由：** Nacos、Sentinel、Seata等组件组成。
 
-### 项目中使用到了哪些组件
+### 项目中使用到了哪些组件 
 
-常用的SpringCloudAlibaba解决方案+部分Netflix组件。
+常用的SpringCloudAlibaba解决方案+部分官方组件。
 
-> 这里多加一些介绍，太简短了
+1、使用Nacos注册中心，提供服务注册和服务发现功能。服务会注册到注册中心中，当其它服务需要调用时，就在注册中心找到服务的地址，进行调用。
 
-1、使用Nacos注册中心，提供服务注册和服务发现功能。（项目中采用的版本是1.4.1）
+	> 项目中采用Nacos的版本是1.4.1
 
 2、使用Nacos config配置中心组件，提供动态配置，可以动态界面化管理环境中的应用配置。
 
 3、使用Ribbon作为服务负载均衡组件。可以让我们轻松地将面向服务的REST请求自动转换成客户端负载均衡的服务调用，微服务间的调用，请求转发等内容，实际上都是通过Ribbon来实现的
 
-4、使用OpenFeign 作为声明式服务调用。
+4、使用OpenFeign 作为声明式服务调用。核心是使用注解 + 接口的方式实现服务调用，可以像调用本地服务一样，调用远程服务，无需感知操作远程http请求。OpenFegin内置了Ribbon组件，因此也实现了负载均衡。
 
-5、使用Sentinel作为流量控制和熔断降级组件。
+5、使用Sentinel作为流量控制和熔断降级组件，来保障微服务调用间的稳定性。
+
+6、使用SpringCloudGateway作为API网关，分发用户请求，将客户端请求路由到相应的服务。
 
 ### SpringCloud 和 SpringBoot有什么不同
 
-- SpringBoot专注于快速方便的开发单个个体微服务。SpringCloud是关注全局的微服务协调整理治理框架，它将SpringBoot开发的一个个单体微服务整合并管理起来，为各个微服务之间提供，配置管理、服务发现、断路器、路由、微代理、事件总线、全局锁、决策竞选、分布式会话等等集成服务
-
-- SpringBoot可以离开SpringCloud独立使用开发项目， 但是SpringCloud离不开SpringBoot ，属于依赖的关系。
-- SpringBoot专注于快速、方便的开发单个微服务个体，SpringCloud关注全局的服务治理框架。
+1. SpringBoot专注于快速方便的开发单个个体微服务。SpringCloud是关注全局的微服务协调整理治理框架，它将SpringBoot开发的一个个单体微服务整合并管理起来，为各个微服务之间提供配置管理、服务发现等集成服务。
+2. SpringBoot可以离开SpringCloud独立使用开发项目， 但是SpringCloud离不开SpringBoot ，属于依赖的关系。
 
 ## Nacos
 
