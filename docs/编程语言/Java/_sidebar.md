@@ -1,5 +1,5 @@
 - Java
   - [类加载](/编程语言/Java/JVM内存模型.md)
-  - [JVM内存模型](/编程语言/Java/JVM内存模型2.md)
+  - [JVM和Java内存模型](/编程语言/Java/JVM内存模型2.md)
   - [垃圾回收机制](/编程语言/Java/GC.md)
   - [Java八股](/编程语言/Java/JJava八股.md)
