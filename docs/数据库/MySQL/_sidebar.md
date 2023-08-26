@@ -1,5 +1,5 @@
 - MySQL
   - [MySQL基础](/数据库/MySQL/MySQL基础.md)
-  - [MySQL核心机制](/数据库/MySQL/MySQL核心机制.md)
-  - [MySQL实战](/数据库/MySQL/MySQL实战.md)
+  - [MySQL优化技术](/数据库/MySQL/MySQL性能优化.md)
+  - [MySQL实战案例](/数据库/MySQL/MySQL案例.md)
   - [MySQL八股](/数据库/MySQL/MySQL八股.md)
