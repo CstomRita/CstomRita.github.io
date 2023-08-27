@@ -17,3 +17,6 @@
 Hi，📚📎📎<span id="sitetime"></span>
 
 <br>
+
+
+[Start Here](README.md)
