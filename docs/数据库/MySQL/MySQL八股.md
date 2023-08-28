@@ -2,10 +2,6 @@
 
 <p align="right">update time : {docsify-updated}</p>
 
-
-
-
-
 ## 事务
 
 ### 持久性

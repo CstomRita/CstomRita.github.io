@@ -1,2 +1,2 @@
 
-> MySQL学习
+> Mysql学习
