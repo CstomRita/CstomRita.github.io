@@ -76,6 +76,14 @@ MySQL对BLOB和TEXT列进行排序与其他类型是不同的：它只对每个�
 
 著作权归@pdai所有 原文链接：https://pdai.tech/md/db/sql-mysql/sql-mysql-theory.html
 
+## 存储过程
+
+
+
+## 函数
+
+
+
 ## 存储引擎
 
 ### InnoDB
@@ -521,12 +529,6 @@ select * from order where status = 1 order by create_time asc
 - 经常更新的字段不用创建索引，比如不要对电商项目的用户余额建立索引，因为索引字段频繁修改，由于要维护 B+Tree的有序性，那么就需要频繁的重建索引，这个过程是会影响数据库性能的
 
 ### 索引优化
-
-## 存储过程
-
-
-
-## 函数
 
 
 
