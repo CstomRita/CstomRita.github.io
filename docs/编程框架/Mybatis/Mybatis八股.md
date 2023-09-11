@@ -73,7 +73,25 @@ Mybatis的工作流程大致分为两步，一是生成会话；二是在会话�
 
 这里使用到了动态代理的思想，Mapper映射是通过**动态代理**实现的。
 
+- Configuration初始化的时候会扫描xml中的所有文件，拿出他们各自的namespace，通过addMapper方法来查找是否有一个对应的namespace.class，这就是为什么接口全限名和namespace保持一致的原因，如果找到这个类则放到knownMappers的哈希表中。
+- 运行时使用`getMapper`方法获取一个Mapper实例，扫描knownMappers来查找这class是不是一个mapper，如果是一个mapper的话，则newInstance生成一个代理对象
+- 调用代理对象的invoke方法，最终会调用mapperMethod.execute方法，将sqlSession和运行时的参数都传入其中执行SQL。
 
+### Mybatis都有哪些Executor执行器？
+
+Mybatis有三种基本的Executor执行器，SimpleExecutor、ReuseExecutor、BatchExecutor。
+
+- **SimpleExecutor**：每执行一次update或select，就开启一个Statement对象，用完立刻关闭Statement对象。
+- **ReuseExecutor**：执行update或select，以sql作为key查找Statement对象，存在就使用，不存在就创建，用完后，不关闭Statement对象，而是放置于Map<String, Statement>内，供下一次使用。简言之，就是重复使用Statement对象。
+- **BatchExecutor**：执行update（没有select，JDBC批处理不支持select），将所有sql都添加到批处理中（addBatch()），等待统一执行（executeBatch()），它缓存了多个Statement对象，每个Statement对象都是addBatch()完毕后，等待逐一执行executeBatch()批处理。与JDBC批处理相同。
+
+### Mybatis的懒加载机制？
+
+懒加载/延迟加载机制的应用场景是进行关联查询时，只有用到关联对象数据时，才去查询。Mybatis支持association关联对象和collection关联集合对象的延迟加载，association指的就是一对一，collection指的就是一对多查询。
+
+懒加载机制的优点是先从单表查询，需要时再从关联表去关联查询，⼤⼤提⾼数据库性能，因为查询单表要比关联查询多张表速度要快。
+
+懒加载机制也是通过动态代理的方式实现，懒加载代理对象执行方法是会被拦截执行invoke方法，在invoke方法中会判断该属性是否需要延迟加载，如果会就执行事先储存好的查询sql并调用set方法为该懒加载对象的属性赋值，之后再继续执行原方法。
 
 ## 应用篇
 
@@ -158,6 +176,59 @@ Mybatis中默认的TypeHandler有很多，例如BooleanTypeHandler、ByteTypeHan
 ### 如何获得生成的主键？
 
 标签中添加：`keyProperty="主键名称" `即可，完成回填主键。
+
+### Mybatis中动态SQL怎么写？
+
+- 可以选择`if`语句，组成where语句
+- 可以选择`choose-when-otherwise`语句，动态组成where语句
+- 可以使用<where>标签，用在所有的查询条件都是动态的情况
+- 可以使用<set>标签， 用在动态更新时
+- 可以用<foreach>标签，用于集合遍历
+
+### Mybatis批量更新？
+
+- 可以使用foreach标签，可以在SQL语句中进行迭代一个集合。这种模式下，要定义好集合的属性，是LIst、Array还是Map。
+
+- 可以使用Mybatis内置的batch执行器，batchExecutor重复使用已经预处理的语句，并且批量执行所有更新语句，可以用于批量处理。 
+
+  但batch模式也有自己的问题，比如在Insert操作时，在事务没有提交之前，是没有办法获取到自增的id，在某些情况下不符合业务的需求。
+
+```java
+//批量保存方法测试
+@Test  
+public void testBatch() throws IOException{
+    SqlSessionFactory sqlSessionFactory = getSqlSessionFactory();
+    //可以执行批量操作的sqlSession
+    SqlSession openSession = sqlSessionFactory.openSession(ExecutorType.BATCH);
+
+    //批量保存执行前时间
+    long start = System.currentTimeMillis();
+    try {
+        EmployeeMapper mapper = openSession.getMapper(EmployeeMapper.class);
+        for (int i = 0; i < 1000; i++) {
+            mapper.addEmp(new Employee(UUID.randomUUID().toString().substring(0, 5), "b", "1"));
+        }
+
+        openSession.commit();
+        long end = System.currentTimeMillis();
+        //批量保存执行后的时间
+        System.out.println("执行时长" + (end - start));
+        //批量 预编译sql一次==》设置参数==》10000次==》执行1次   677
+        //非批量  （预编译=设置参数=执行 ）==》10000次   1121
+
+    } finally {
+        openSession.close();
+    }
+}
+```
+
+### Mybatis分页？
+
+MyBatis使用RowBounds对象进行分页，它是针对ResultSet结果集执行的内存分页，而非物理分页。
+
+可以在sql内直接书写带有物理分页的参数来完成物理分页功能，也可以使用分页插件来完成物理分页。
+
+常见的分页插件PageHelper等，是使用Mybatis提供的插件接口，拦截query方法，在执行查询的时候重写sql，添加`limit`物理分页语句和物理分页参数完成的。
 
 
 
