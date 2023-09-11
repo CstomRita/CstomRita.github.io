@@ -72,10 +72,6 @@ BLOB和TEXT都是为存储很大的数据而设计的数据类型，分别采用
 
 MySQL对BLOB和TEXT列进行排序与其他类型是不同的：它只对每个列的最前max_sort_length个字节而不是整个字符串做排序。同样的，MySQL也不能将BLOB或TEXT列全部长度的字符串进行索引。
 
-------
-
-著作权归@pdai所有 原文链接：https://pdai.tech/md/db/sql-mysql/sql-mysql-theory.html
-
 ## 存储过程
 
 
@@ -198,10 +194,6 @@ B+ Tree 是基于 B Tree 和叶子节点顺序访问指针进行实现，它具�
 进行查找操作时，首先在根节点进行二分查找，找到一个 key 所在的指针，然后递归地在指针所指向的节点进行查找，直到查找到叶子节点，然后在叶子节点上进行二分查找，找出 key 所对应的 data。
 
 插入删除操作记录会破坏平衡树的平衡性，因此在插入删除操作之后，需要对树进行一个分裂、合并、旋转等操作来维护平衡性。
-
-------
-
-著作权归@pdai所有 原文链接：https://pdai.tech/md/db/sql-mysql/sql-mysql-b-tree.html
 
 ###### B+索引
 
