@@ -18,29 +18,29 @@ collection接口下的子接口：
       	 - Stack
       	 - LinkedList
       	 - RandomAccessSubList
-      	 - CopyOnWriteArrayList
+      	 - CopyOnWriteArrayList（juc包）
 
 2. set
    	- HashSet
       	- LinkedHashSet
       	- TreeSet
-      	- ConcurrentSkipListSet
-      	- CopyOnwriteArraySet
+      	- ConcurrentSkipListSet（juc包）
+      	- CopyOnwriteArraySet（juc包）
 
 3. queue
-   	- LinkedList
-      	- ArrayDeque
-      	- PriorityQueue
-    - 阻塞队列BlockingQueue接口
-      	- PriorityBlockingQueue
-      	- ArrayBlockingQueue
-      	- SynchronousQueue
-      	- DelayQueue
-      	- LinkedBlockingQueue
-       - LinkedBlockingDeque
-   - 非阻塞队列直接实现Queue接口
-     - ConcurrentLinkedQueue
-     - ConcurrentLinkedDeque
+   - LinkedList
+     	- PriorityQueue
+     	- ArrayDeque（juc包）
+   - 阻塞队列BlockingQueue接口（juc包）
+     	- PriorityBlockingQueue（juc包）
+     	- ConcurrentLinkedQueue（juc包）
+     	- ArrayBlockingQueue（juc包）
+     	- SynchronousQueue（juc包）
+     	- DelayQueue（juc包）
+     	- LinkedBlockingQueue（juc包）
+      - LinkedBlockingDeque（juc包）
+   - 非阻塞队列直接实现Deque接口（juc包）
+     - ConcurrentLinkedDeque（juc包）
 
 ## List
 
@@ -125,11 +125,11 @@ public E remove(int index) {
 
 > 需要注意的是为了让GC起作用，必须显式的为最后一个位置赋`null`值。
 
-### LinkedList
+### LinkedList //todo
 
 
 
-### Vector 
+### Vector  //todo
 
 #### Vector
 
@@ -463,23 +463,7 @@ HashMap是无序的，根据 hash 值随机插入，迭代HashMap的顺序并不
 
 ### ConcurrentHashMap
 
-#### 实现原理
-
-##### jdk 1.7
-
-从结构上说，1.7版本的ConcurrentHashMap采用分段锁机制，里面包含一个Segment数组，Segment继承于ReentrantLock，Segment则包含HashEntry的数组，HashEntry本身就是一个链表的结构，具有保存key、value的能力能指向下一个节点的指针。
-
-实际上就是相当于每个Segment都是一个HashMap，默认的Segment长度是16，也就是支持16个线程的并发写，Segment之间相互不会受到影响。
-
-![1.7ConcurrentHashMap示意图](Java%E9%9B%86%E5%90%88.assets/collection-31.png)
-
-##### jdk1.8
-
-jdk1.8实现线程安全不是在数据结构上下功夫，它的数据结构和HashMap是一样的，数组+链表+红黑树。
-
-它实现线程安全的关键点在于put流程。
-
-
+ConcurrentHashMap是JUC框架集合类中的重要成员，详情可见JUC框架。
 
 ### LinkedHashMap
 
@@ -609,3 +593,6 @@ LinkedHashMap有对get方法进行了重写：
 TreeMap 是按照 Key 的自然顺序或者 Comprator 的顺序进行排序，内部是通过红黑树来实现。所以要么 key 所属的类实现 Comparable 接口，或者自定义一个实现了 Comparator 接口的比较器，传给 TreeMap 用于 key 的比较。
 
 ![TreeMap](Java%E9%9B%86%E5%90%88.assets/collection-35.png)
+
+## Set //todo
+

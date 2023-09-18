@@ -91,8 +91,6 @@ Java 反射机制是指在程序的运行过程中，可以构造任意一个类
 - Method 类：获取类的方法信息
 - Construct 类：获取类的构造方法等等信息
 
-
-
 ## 集合篇
 
 ### Java中的集合有哪些？
@@ -222,11 +220,11 @@ Java 中有 HashTable、Collections.synchronizedMap、以及 ConcurrentHashMap �
 - Collections.synchronizedMap 包装封装map，内部定义了一个对象锁，方法内通过对象锁实现；
 - ConcurrentHashMap 在jdk1.7中使用分段锁，在jdk1.8中使用CAS+synchronized。
 
-### ConcurrentHashMap?
+### ConcurrentHashMap? //to be fixed
 
+1.7版本的ConcurrentHashMap采用分段锁机制，里面包含一个Segment数组，使用锁机制控制并发，锁住segment数组。相当于每个Segment都是一个HashMap，默认的Segment长度是16，也就是支持16个线程的并发写，Segment之间相互不会受到影响。
 
-
-
+1.8实现线程安全不是在数据结构上下功夫，它的数据结构和HashMap是一样的，它实现线程安全的关键点在于put流程，使用了CAS和synchronized实现：当位置为空可以写入数据时使用CAS原子操作写入数据，当不满足CAS写入条件时，使用synchronized锁写入数据。
 
 ### 有序的Map有哪些？
 
@@ -242,9 +240,17 @@ LinkedHashMap维护了一个双向链表，有头尾节点。同时 LinkedHashMa
 
 TreeMap 是按照 Key 的自然顺序或者 Comprator 的顺序进行排序，内部是通过红黑树来排序实现。要么 key 所属的类实现 Comparable 接口，或者自定义一个实现了 Comparator 接口的比较器，传给 TreeMap 用于 key 的比较。
 
+### HashSet如何实现的？
+
+HashSet 底层就是基于 HashMap 实现的，将添加的元素作为key，new一个Object作为value，直接调用HashMap的put方法来添加元素。
+
 ### 线程安全的集合有哪些？
 
+针对List列表，线程安全的类有：Vector、Stack（继承Vector）、CopyOnWriteArrayList 、Collections.synchronizedList 包装 ArrayList。
 
+针对Map类型，线程安全的类有：HashTable、ConcurrentHashMap、Collections.synchronizedMap封装map。
+
+针对Set类型，线程安全的类有：CopyOnWriteArraySet、Collections.synchronizedSet包装 set。
 
 ## 并发编程
 
