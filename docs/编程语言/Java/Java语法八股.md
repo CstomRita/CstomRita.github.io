@@ -220,11 +220,11 @@ Java 中有 HashTable、Collections.synchronizedMap、以及 ConcurrentHashMap �
 - Collections.synchronizedMap 包装封装map，内部定义了一个对象锁，方法内通过对象锁实现；
 - ConcurrentHashMap 在jdk1.7中使用分段锁，在jdk1.8中使用CAS+synchronized。
 
-### ConcurrentHashMap? //to be fixed
+### ConcurrentHashMap的实现原理？
 
 1.7版本的ConcurrentHashMap采用分段锁机制，里面包含一个Segment数组，使用锁机制控制并发，锁住segment数组。相当于每个Segment都是一个HashMap，默认的Segment长度是16，也就是支持16个线程的并发写，Segment之间相互不会受到影响。
 
-1.8实现线程安全不是在数据结构上下功夫，它的数据结构和HashMap是一样的，它实现线程安全的关键点在于put流程，使用了CAS和synchronized实现：当位置为空可以写入数据时使用CAS原子操作写入数据，当不满足CAS写入条件时，使用synchronized锁写入数据。
+1.8实现线程安全不是在数据结构上下功夫，它的数据结构和HashMap是一样的，它实现线程安全的关键点在于put流程，使用了CAS和synchronized实现：当位置为空时，表示没有哈希冲突，可以写入数据，使用CAS原子操作写入数据；如果出现了哈希冲突，则加synchronized锁保证线程安全。
 
 ### 有序的Map有哪些？
 
@@ -251,8 +251,6 @@ HashSet 底层就是基于 HashMap 实现的，将添加的元素作为key，new
 针对Map类型，线程安全的类有：HashTable、ConcurrentHashMap、Collections.synchronizedMap封装map。
 
 针对Set类型，线程安全的类有：CopyOnWriteArraySet、Collections.synchronizedSet包装 set。
-
-## 并发编程
 
 
 
