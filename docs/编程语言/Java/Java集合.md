@@ -202,13 +202,13 @@ static class SynchronizedCollection<E> implements Collection<E>, Serializable {
 
 ## Map
 
-| Map               | key        | Value      | Super       | 是否安全     |
-| ----------------- | ---------- | ---------- | ----------- | ------------ |
-| HashTable         | 不能为null | 不能为null | Dictionary  | 线程安全     |
-| ConcurrentHashMap | 不能为null | 不能为null | AbstractMap | 线程局部安全 |
-| TreeMap           | 不能为null | 可以为null | AbstractMap | 线程不安全   |
-| HashMap           | 可以为null | 可以为null | AbstractMap | 线程不安全   |
-| LinkedHashMap     | 可以为null | 可以为null | HashMap     | 线程不安全   |
+| Map               | key        | Value      | Super       | 是否安全               | 是否有序 |
+| ----------------- | ---------- | ---------- | ----------- | ---------------------- | -------- |
+| HashMap           | 可以为null | 可以为null | AbstractMap | 线程不安全             | 无序     |
+| HashTable         | 不能为null | 不能为null | Dictionary  | 线程安全(synchronized) | 无序     |
+| ConcurrentHashMap | 不能为null | 不能为null | AbstractMap | 线程局部安全           | 无序     |
+| TreeMap           | 不能为null | 可以为null | AbstractMap | 线程不安全             | 有序     |
+| LinkedHashMap     | 可以为null | 可以为null | HashMap     | 线程不安全             | 有序     |
 
 ### 基础知识
 
@@ -457,11 +457,27 @@ Java 中有 HashTable、Collections.synchronizedMap、以及 ConcurrentHashMap �
 
 #### 有序问题
 
-HashMap是无序的，根据 hash 值随机插入。
+HashMap是无序的，根据 hash 值随机插入，迭代HashMap的顺序并不是HashMap放置的顺序。
 
 如果想使用有序的Map，可以使用LinkedHashMap 或者 TreeMap。
 
 ### ConcurrentHashMap
+
+#### 实现原理
+
+##### jdk 1.7
+
+从结构上说，1.7版本的ConcurrentHashMap采用分段锁机制，里面包含一个Segment数组，Segment继承于ReentrantLock，Segment则包含HashEntry的数组，HashEntry本身就是一个链表的结构，具有保存key、value的能力能指向下一个节点的指针。
+
+实际上就是相当于每个Segment都是一个HashMap，默认的Segment长度是16，也就是支持16个线程的并发写，Segment之间相互不会受到影响。
+
+![1.7ConcurrentHashMap示意图](Java%E9%9B%86%E5%90%88.assets/collection-31.png)
+
+##### jdk1.8
+
+jdk1.8实现线程安全不是在数据结构上下功夫，它的数据结构和HashMap是一样的，数组+链表+红黑树。
+
+它实现线程安全的关键点在于put流程。
 
 
 
@@ -471,7 +487,7 @@ HashMap是无序的，根据 hash 值随机插入。
 
 它的底层就是存放了一个HashMap+一个LinkedList
 
-因为维护了一个双向链表可以很好的保持迭代顺序
+因为维护了一个**双向链表**，可以很好的保持迭代顺序
 
 ![F7617227-D760-4421-B5F7-C715051B7629](Java%E9%9B%86%E5%90%88.assets/F7617227-D760-4421-B5F7-C715051B7629.png)
 
@@ -482,6 +498,111 @@ HashMap和双向链表的密切配合和分工合作造就了LinkedHashMap。
 特别需要注意的是，next用于维护HashMap各个桶中的Entry链（这个链就是HashMap中的单向链表），before、after用于维护LinkedHashMap的双向链表（用来标记先插入了什么数据，然后又插入了什么数据），虽然它们的作用对象都是Entry，但是各自分离，是两码事儿。
 
 ![206F6152-2D18-47DB-90AA-8B54F6D7E716](Java%E9%9B%86%E5%90%88.assets/206F6152-2D18-47DB-90AA-8B54F6D7E716.png)
+
+#### put流程
+
+- LinkedHashMap没有重写put方法，通过调用HashMap得到put方法：
+
+```java
+    public V put(K key, V value) {
+        // 对key为null的处理
+        if (key == null)
+            return putForNullKey(value);
+        // 计算hash
+        int hash = hash(key);
+        // 得到在table中的index
+        int i = indexFor(hash, table.length);
+        // 遍历table[index]，是否key已经存在，存在则替换，并返回旧值
+        for (Entry<K,V> e = table[i]; e != null; e = e.next) {
+            Object k;
+            if (e.hash == hash && ((k = e.key) == key || key.equals(k))) {
+                V oldValue = e.value;
+                e.value = value;
+                e.recordAccess(this);
+                return oldValue;
+            }
+        }
+        
+        modCount++;
+        // 如果key之前在table中不存在，则调用addEntry，LinkedHashMap重写了该方法
+        addEntry(hash, key, value, i);
+        return null;
+    }
+```
+
+- LinkedHashMap重写了addEntry方法
+
+```java
+    void addEntry(int hash, K key, V value, int bucketIndex) {
+        // 调用父类的addEntry，增加一个Entry到HashMap中
+        super.addEntry(hash, key, value, bucketIndex);
+
+        // removeEldestEntry方法默认返回false，不用考虑
+        Entry<K,V> eldest = header.after;
+        if (removeEldestEntry(eldest)) {
+            removeEntryForKey(eldest.key);
+        }
+    }
+```
+
+- LinkedHashMap重写createEntry方法，当put元素时，不但要把它加入到HashMap中去，还要加入到双向链表中
+
+```JAVA
+   void createEntry(int hash, K key, V value, int bucketIndex) {
+       HashMap.Entry<K,V> old = table[bucketIndex];
+       // e就是新创建了Entry，会加入到table[bucketIndex]的表头
+       Entry<K,V> e = new Entry<>(hash, key, value, old);
+       table[bucketIndex] = e;
+       // 把新创建的Entry，加入到双向链表中
+       e.addBefore(header);
+       size++;
+   }
+```
+
+LinkedHashMap就是HashMap+双向链表，下面用图来表示逐步往LinkedHashMap中添加数据的过程，红色部分是双向链表，黑色部分是HashMap结构，header是一个Entry类型的双向链表表头，本身不存储数据。
+
+首先是只加入一个元素Entry1，假设index为0：
+
+![image-20230918185631453](Java%E9%9B%86%E5%90%88.assets/image-20230918185631453.png)
+
+当再加入一个元素Entry2，假设index为15：
+
+![image-20230918185641216](Java%E9%9B%86%E5%90%88.assets/image-20230918185641216.png)
+
+当再加入一个元素Entry3, 假设index也是0：
+
+![image-20230918185652230](Java%E9%9B%86%E5%90%88.assets/image-20230918185652230.png)
+
+以上，就是LinkedHashMap的put的所有过程了，总体来看，跟HashMap的put类似，只不过多了把新增的Entry加入到双向列表中。
+
+#### get流程
+
+LinkedHashMap有对get方法进行了重写：
+
+```kotlin
+    public V get(Object key) {
+        // 调用genEntry得到Entry
+        Entry<K,V> e = (Entry<K,V>)getEntry(key);
+        if (e == null)
+            return null;
+        // 如果LinkedHashMap是访问顺序的，则get时，也需要重新排序
+        e.recordAccess(this);
+        return e.value;
+    }
+```
+
+先是调用了getEntry方法，通过key得到Entry，而LinkedHashMap并没有重写getEntry方法，所以调用的是HashMap的getEntry方法------ >HashMap的getEntry方法：首先通过key算出hash值，然后根据hash值算出在table中存储的index，然后遍历table[index]的单向链表去对比key，如果找到了就返回Entry。
+
+后面调用了LinkedHashMap.Entry的recordAccess方法，在访问顺序的LinkedHashMap进行了get操作以后，重新排序，把get的Entry移动到双向链表的表尾。
+
+#### 总结
+
+|        **关  注  点**         |         **结    论**         |
+| :---------------------------: | :--------------------------: |
+|    LinkedHashMap是否允许空    |      Key和Value都允许空      |
+| LinkedHashMap是否允许重复数据 | Key重复会覆盖、Value允许重复 |
+|     LinkedHashMap是否有序     |           **有序**           |
+|   LinkedHashMap是否线程安全   |          非线程安全          |
 
 ### TreeMap
 
