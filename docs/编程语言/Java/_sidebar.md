@@ -8,7 +8,7 @@
 - 并发篇
   - [并发基础](/编程语言/Java/多线程并发.md)
   - [JUC框架](/编程语言/Java/JUC.md)
-- [Java八股]
+- Java八股
   - [Java](/编程语言/Java/Java语法八股.md)
   - [多线程](/编程语言/Java/多线程八股.md)
   - [JVM](/编程语言/Java/JVM八股.md)
