@@ -1,5 +1,11 @@
-- Redis
-  - [Redis基础](/中间件/Redis/Redis基础.md)
-  - [Redis核心机制](/中间件/Redis/Redis核心机制.md)
-  - [Redis实战](/中间件/Redis/Redis实战.md)
-  - [Redis八股](/中间件/Redis/Redis八股.md)
+- [根目录](/README)
+
+- [Redis基础](/中间件/Redis/Redis基础.md)
+
+- [Redis核心机制](/中间件/Redis/Redis核心机制.md)
+
+- [Redis实战](/中间件/Redis/Redis实战.md)
+
+- [Redis八股](/中间件/Redis/Redis八股.md)
+
+  
