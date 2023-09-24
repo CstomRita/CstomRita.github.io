@@ -2,120 +2,60 @@
 
 <p align="right">update time : {docsify-updated}</p>
 
+## 消息队列
 
+目前企业中比较常见的消息队列产品主要有Kafka、ActiveMQ、RabbitMQ、RocketMQ等。
 
-## Kafka消息模型
+在大数据场景主要采用Kafka作为消息队列。在JavaEE开发中主要采用ActiveMQ、RabbitMQ、RocketMQ。
 
-###  消息模型分类
+- ActiveMQ：历史悠久，实现了JMS（Java Message Service）规范，支持性较好，性能相对不高。
+- RabbitMQ：可靠性高、安全。
+- RocketMQ：阿里开源的消息中间件，纯Java实现。
+- Kafka：分布式、高性能、跨语言。
 
-点对点模式和发布订阅模式
+### 应用场景
 
-1. 点对点模型：一个生产者向一个特定的队列发布消息，只有一个消费者进行消费。生产者不需要在接收者消费时处于运行状态，接收者也不需要在消息发送时处于运行状态；多个消费者对于队列内的消息是竞争关系，每个消费者只能收到队列的一部分消息。
-2. 发布-订阅模型：一个生产者向一个特定的队列发布消息，0个或多个订阅者可以接收特定主题的消息；发布者需要创建一个主题，一个主题至少是一个队列组成的，每个消费者都能收到全量的消息。
+传统的消息队列的主要应用场景包括:缓冲/消峰、解耦和异步通信。
 
-###  Kafka消息模型 --- 消费者组机制
+- **缓冲/消峰：有助于控制和优化数据流经过系统的速度，解决生产消息和消费消息的处理速度不一致的情况**
 
-kafka中的两种消息模型，队列和发布订阅，就是通过consumer group实现的：
+![img](Kafka.assets/2591061-20221118000535071-660625394.png)
 
-- 队列模型：所有的Consumer实例都属于一个group，即一条消息仅被消费一次。[单播]
-- 发布/订阅模型：所有的Consumer实例都单独使用一个group，即一条消息会被广播到所有消费者。[广播]
+ 
 
-![iamge](Kafka.assets/image-20230728164031475.png)
+- **解耦：允许你独立的扩展或修改两边的处理过程，只要确保它们遵守同样的接口约束。**
 
-一个主题可以配置几个分区，生产者发送的消息分发到不同的分区中，消费者接收数据的时候是按照消费者组来接收的：
+![img](Kafka.assets/2591061-20221113153327773-418030224.png)
 
-1. 每个分区的消息只能被同一个消费者组中的同一个消费者消费。 --- 单播
-2. 每个分区的消息可以被不同消费者组里的消费者消费。 --- 广播
+ 
 
-###  消费者组分区分配策略
+- **异步通信:允许用户把一个消息放入队列，但并不立即处理它，然后在需要的时候再去处理它们。**
 
-Kafka有两种分配策略，一是roundrobin，一是range。最新还有一个StickyAssignor策略。
+![img](Kafka.assets/2591061-20221118000715509-247563864.png)
 
-目前我们还不能自定义分区分配策略，只能通过`partition.assignment.strategy`参数选择 range 或 roundrobin。`partition.assignment.strategy`参数默认的值是range。
+### 消息队列模式
 
-**1 Range策略**
+#### 点对点
 
-RangeAssignor对每个Topic进行独立的分区分配。对于每一个Topic，首先对分区按照分区ID进行排序，然后订阅这个Topic的消费组的消费者再进行排序，之后尽量均衡的将分区分配给消费者。这里只能是尽量均衡，因为分区数可能无法被消费者数量整除，那么有一些消费者就会多分配到一些分区。
+消费者主动拉取数据，消息收到之后清除消息。
 
-Range策略：首先对同一个Topic里面的分区按照序号进行排序，并对消费者按照字母顺序进行排序。然后用Partitions分区的个数除以消费者线程的总数来决定每个消费者线程消费几个分区。假设n=分区数/消费者数量，m=分区数%消费者数量，那么前m个消费者每个分配n+1个分区，后面的（消费者数量-m）个消费者每个分配n个分区。
+![img](Kafka.assets/2591061-20221113153810167-372719945.png)
 
-> 假如有10个分区，3个消费者线程，把分区按照序号排列0，1，2，3，4，5，6，7，8，9；消费者线程为C1-0，C2-0，C2-1，那么用partition数除以消费者线程的总数来决定每个消费者线程消费几个partition，如果除不尽，前面几个消费者将会多消费一个分区。在我们的例子里面，我们有10个分区，3个消费者线程，10/3 = 3，而且除除不尽，那么消费者线程C1-0将会多消费一个分区，所以最后分区分配的结果看起来是这样的：
->
-> ```text
-> C1-0：0，1，2，3
-> C2-0：4，5，6
-> C2-1：7，8，9
-> ```
->
-> 如果有11个分区将会是：
->
-> ```text
-> C1-0：0，1，2，3
-> C2-0：4，5，6，7
-> C2-1：8，9，10
-> ```
+一个生产者向一个特定的队列发布消息，只有一个消费者进行消费。生产者不需要在接收者消费时处于运行状态，接收者也不需要在消息发送时处于运行状态；多个消费者对于队列内的消息是竞争关系，每个消费者只能收到队列的一部分消息。
 
-> 假如我们有两个主题T1,T2，分别有10个分区，最后的分配结果将会是这样：
->
-> ```text
-> C1-0：T1（0，1，2，3） T2（0，1，2，3）
-> C2-0：T1（4，5，6） T2（4，5，6）
-> C2-1：T1（7，8，9） T2（7，8，9）
-> ```
+#### 发布-订阅
 
-如果有 N 多个 topic，那么针对每个 topic，消费者 C1-0 都将多消费 1 个分区，topic越多，C1-0 消费的分区会比其他消费者明显多消费 N 个分区。这就是 Range 范围分区的一个很明显的弊端了
+1. 可以有多个topic主题
+2. 消费者消费数据之后，不删除数据
+3. 每个消费者相互独立，都可以消费到数据
 
-**2  RoundRobin**
+![img](Kafka.assets/2591061-20221113154118350-462490901.png)
 
-RoundRobin策略的原理是将消费组内所有消费者以及消费者所订阅的所有topic的partition按照字典序排序【==注意的是这里排序的是该消费者组订阅的所有topic的partition，和策略1中的range不同，range是一个topic 一个topic的排序分配==】，然后通过轮询方式逐个将分区以此分配给每个消费者。
+一个生产者向一个特定的队列发布消息，0个或多个订阅者可以接收特定主题的消息；发布者需要创建一个主题，一个主题至少是一个队列组成的，每个消费者都能收到全量的消息。
 
+##  存储结构
 
-
-RoundRobinAssignor的分配策略是将消费组内订阅的所有Topic的分区及所有消费者进行排序后尽量均衡的分配（RangeAssignor是针对单个Topic的分区进行排序分配的）。
-
-如果消费组内，消费者订阅的Topic列表是相同的（每个消费者都订阅了相同的Topic），那么分配结果是尽量均衡的（消费者之间分配到的分区数的差值不会超过1）。如果订阅的Topic列表是不同的，那么分配结果是不保证“尽量均衡”的，因为某些消费者不参与一些Topic的分配。
-
-
-
-**3.StickyAssignor**
-
-Kafka从0.11.x版本开始引入这种分配策略，它主要有两个目的：
-
-1. 分区的分配要尽可能的均匀，分配给消费者者的主题分区数最多相差一个；
-2. 分区的分配尽可能的与上次分配的保持相同。
-
-当两者发生冲突时，第一个目标优先于第二个目标。
-
-这里代码实现很复杂，大致知道有这个东西就行了。
-
-StickyAssignor分配算法的核心逻辑如下：
-
-1. 先构建出当前的分配状态：currentAssignment
-   1. 如果currentAssignment为空，则是全新的分配
-2. 构建出partition2AllPotentialConsumers和consumer2AllPotentialPartitions两个辅助后续分配的数据结构
-   1. partition2AllPotentialConsumers是一个Map<TopicPartition, List<String>>，记录着每个Partition可以分配给哪些Consumer
-   2. consumer2AllPotentialPartitions是一个Map<String, List<TopicPartition>>，记录着每个Consumer可以分配的Partition列表
-3. 补全currentAssignment，将不属于currentAssignment的Consumer添加进去（如果新增了一个Consumer，这个Consumer上一次是没参与分配的，新添加进去分配的Partition列表为空）
-4. 构建出currentPartitionConsumer来用于辅助的分配，currentPartitionConsumer记录了当前每个Partition分配给了哪个Consumer——就是把currentAssignment从Consumer作为Key转换到Partition作为Key用于辅助分配
-5. 对所有分区进行排序（排序结果为sortedPartitions），排序有两种规则：
-   1. 如果不是初次分配，并且每个Consumer订阅是相同的：
-      1. 对Consumer按照它所分配的Partition数进行排序
-      2. 按照上一步的排序结果，将每个Consumer分配的分区插入到List中（List就是排序后的分区）
-      3. 将不属于任何Consumer的分区加入List中
-   2. 否则：分区之间按照可以被分配的Consumer的数量进行排序
-6. 构造unassignedPartitions记录所有要被分配的分区（初始为上一步排序过的所有分区，后续进行调整：将已分配的，不需要移除了Partition从unassignedPartitions中移除）
-7. 进行分区调整，来达到分区分配均衡的目的；分区的Rebalance包含多个步骤
-   1. 将上一步未分配的分区（unassignedPartitions）分配出去。分配的策略是：按照当前的分配结果，每一次分配时将分区分配给订阅了对应Topic的Consumer列表中拥有的分区最少的那一个Consumer
-   2. 校验每一个分区是否需要调整，如果分区不需要调整，则从sortedPartitions中移除。分区是否可以被调整的规则是：如果这个分区是否在partition2AllPotentialConsumers中属于两个或超过两个Consumer。
-   3. 校验每个Consumer是否需要调整被分配的分区，如果不能调整，则将这个Consumer从sortedCurrentSubscriptions中移除，不参与后续的重分配。判断是否调整的规则是：如果当前Consumer分配的分区数少于它可以被分配的最大分区数，或者它的分区满足上一条规则。
-   4. 将以上步骤中获取的可以进行重分配的分区，进行重新的分配。每次分配时都进行校验，如果当前已经达到了均衡的状态，则终止调整。均衡状态的判断依据是Consumer之间分配的分区数量的差值不超过1；或者所有Consumer已经拿到了它可以被分配的分区之后仍无法达到均衡的上一个条件（比如c1订阅t1，c2订阅t2，t1 t2分区数相差超过1，此时没法重新调整）。如果不满足上面两个条件，且一个Consumer所分配的分区数少于同一个Topic的其他订阅者分配到的所有分区的情况，那么还可以继续调整，属于不满足均衡的情况。
-8. 后续流程和普通分配一致
-
-
-
-##  Kafka存储结构
-
-###Kafka用什么存储消息
+###用什么存储消息
 
 Kafka 最终会选用 logging（日志文件）+ 哈希索引的结构来存储消息。
 
@@ -130,7 +70,7 @@ Kafka采用的Append追加写日志文件的方式，是满足写入操作并发
 
 ![iamge](Kafka.assets/image-20230727104656231.png)
 
-###  Kafka Topic下存储模型
+###  Topic下存储模型
 
 
 
@@ -146,19 +86,31 @@ Kafka是面向主题的，分区 + 分段 + 索引三层结构
 
 > 日志文件的大小是Kafka **server.properties**设置的
 
-## Kafka架构模型
+## 架构模型
 
-### Kafka包含的组件
+### 基础架构
+
+**Kafka为多分区多副本架构**
+
+![img](Kafka.assets/2591061-20221113155143571-1630948393.png)
 
 Kafka架构中的组件主要包括：
 
-1. Producer：发送消息者
-2. Consumer：消息接受者
-3. broker：每个kafka实例(server)。
-4. Kafka Controller：其中有一个broker会被选举为控制器（Kafka Controller），**它的主要作用是在 ZooKeeper 的帮助下管理和协调整个 Kafka 集群**，
-5. Zookeeper：依赖集群保持元信息。他的作用包括
-   1. 管理和协调Broker，broker的注册、出现故障的broker等
-   2. 存储元数据，Kafka有多少topic、partition、consumer；topic各个partition的offset等
+1. Producer：发送消息者，生产者负责创建消息，然后将其发送到 Kafka。
+2. Consumer：消息接受者，消费者连接到 Kafka 并接收消息，进而进行相应的业务逻辑处理。
+3. Consumer Group(消费组): 一个消费者组可以包含一个或多个消费者。消费者组内每个消费者负责消费不同分区的数据，一个分区只能由一个组内消费者消费；消费者组之间互不影响，所有的消费者都属于某个消费者组，即消费者组是逻辑上的一个订阅者。
+4. broker：每个kafka实例(server)。Broker 是 Kafka 的服务节点，即 Kafka 的服务器。一个集群由多个broker组成。一个broker可以容纳多个topic。
+5. Topic:可以理解为一个队列，一个 Topic 又分为一个或多个分区。
+6. Partition(分区)：是Kafka实现高吞吐的方式，一个非常大的topic可以分布到多个broker（即服务器）上，一个topic可以分为多个partition，每个partition是一个有序的队列。
+7. Offset：是消息在分区中的唯一标识，Kafka 通过它来保证消息在分区内的顺序性，不过 Offset 并不跨越分区， 也就是说，<font color=red>Kafka 保证的是分区有序性而不是主题有序性，即局部有序</font>。
+8. Replication(副本)：是 Kafka 保证数据高可用的方式，Kafka 同一Partition 的数据可以在多 Broker 上存在多 个副本，通常只有主副本对外提供读写服务，当主副本所在 Broker 崩溃或发生网络一场，Kafka 会在 Controller 的管理下会重新选择新的 Leader 副本对外提供读写服务。
+9. Leader：每个分区多个副本的“主”，生产者发送数据的对象，以及消费者消费数据的对象都是Leader。
+10. Follower：每个分区多个副本中的“从”，实时从Leader中同步数据，保持和Leader数据的同步。Leader发生故障时，某个Follower会成为新的Leader。
+11. Record：实际写入 Kafka 中并可以被读取的消息记录。每个 Record 包含了 key、value 和 timestamp。
+12. Kafka Controller：其中有一个broker会被选举为控制器（Kafka Controller），**它的主要作用是在 ZooKeeper 的帮助下管理和协调整个 Kafka 集群**，
+13. Zookeeper：依赖集群保持元信息。他的作用包括
+    1. 管理和协调Broker，broker的注册、出现故障的broker等
+    2. 存储元数据，Kafka有多少topic、partition、consumer；topic各个partition的offset等
 
 ### KafkaController
 
@@ -214,13 +166,7 @@ Kafka 当前选举控制器的规则是：==Kafka 集群中第一个启动的 br
 
 为了解决Controller脑裂问题，ZooKeeper中还有一个与Controller有关的持久节点/controller_epoch，存放的是一个整形值的epoch number（纪元编号，也称为隔离令牌），集群中每选举一次控制器，就会通过Zookeeper创建一个数值更大的epoch number，如果有broker收到比这个epoch数值小的数据，就会忽略消息。
 
-### Kafka多分区多副本架构
-
-![image](Kafka.assets/image-20230729080345040.png)
-
-
-
-##  Kafka的分区机制【高吞吐】
+##  分区机制【高吞吐】
 
 分区机制是kafka实现高吞吐的方式。
 
@@ -283,13 +229,13 @@ public int partition(String topic, Object key, byte[] keyBytes,
 
 
 
-## Kafka的副本机制【高可用】
+## 副本机制【高可用】
 
 副本机制是Kafka实现高可用的方式。
 
 在kafka中，每个主题可以有多个分区，每个分区又可以有多个副本。这多个副本中，只有一个是leader，而其他的都是follower副本。仅有leader副本可以对外提供服务。多个follower副本通常存放在和leader副本不同的broker中。通过这样的机制实现了高可用，当某台机器挂掉后，其他follower副本也能迅速”转正“，开始对外提供服务。
 
-###  kafka的副本都有哪些作用
+###  副本都有哪些作用
 
 在kafka中，实现副本的目的就是冗余备份，且仅仅是冗余备份，所有的读写请求都是由leader副本进行处理的。follower副本仅有一个功能，那就是从leader副本拉取消息，尽量让自己跟leader副本的内容一致。
 
@@ -410,11 +356,400 @@ A：
 
 有机架分配按照交替机架的方式来选择broker：假设broker0、broker1和broker2放置在同一个机架上，broker3、broker4、broker5分别放置在其它不同的机架上。我们不是按照0-5的顺序来选择broker，而是按照0，3，1，4，2，5的顺序来选择，这样每个相邻的broker都在不同的机架上。
 
+## 生产者
+
+### 消息发送流程
+
+在消息发送的过程中，涉及到了两个线程——main线程和Sender线程：
+
+- 在main线程中创建了一个双端队列RecordAccumulator [默认32m]，main线程将消息发送给RecordAccumulator
+- Sender线程不断从RecordAccumulator中拉取消息发送到Kafka Broker
+
+![img](Kafka.assets/2591061-20221113182126109-2003618548.png)
+
+#### main线程
+
+##### 初始化
+
+![img](Kafka.assets/2591061-20221119152602831-1556480711.png)
+
+##### 发送数据
+
+![img](Kafka.assets/2591061-20221119152918269-1015214468.png)
+
+#### sender线程
+
+##### 初始化
+
+![img](Kafka.assets/2591061-20221119152805483-1834132623.png)
+
+##### 发送数据
+
+![img](Kafka.assets/2591061-20221119153038758-1123867300.png)
+
+### 配置参数
+
+| 参数                                      | 描述                                                         |
+| ----------------------------------------- | ------------------------------------------------------------ |
+| **bootstrap.servers**                     | **生产者连接集群所需的broker地址清单**。例如kafka1:9092,kafka2:9092,kafka3:9092，可以设置1个或者多个，中间用逗号隔开。注意这里并非需要所有的broker地址，因为生产者从给定的broker里查找到其他broker信息。 |
+| key.serializer和value.serializer          | 指定发送消息的key和value的序列化类型。**一定要写全类名**。   |
+| **buffer.memory**                         | RecordAccumulator**缓冲区总大小，****默认32m。**             |
+| **batch.size**                            | 缓冲区一批数据最大值，**默认16k**。**适当增加该值，可以提高吞吐量，但是如果该值设置太大，会导致数据传输延迟增加。** |
+| **linger.ms**                             | **如果数据迟迟未达到batch.size，sender等待linger.time之后就会发送数据**。**单位ms，默认值是0ms**，表示没有延迟。生产环境建议该值大小为5-100ms之间。 |
+| **acks**                                  | 0：生产者发送过来的数据，**不需要等数据落盘应答。**  1：生产者发送过来的数据，**Leader收到数据后应答。**  -1（all）：生产者发送过来的数据，**Leader+和isr队列里面的所有节点收齐数据后应答**。**默认值是-1，-1和all是等价的**。 |
+| **max.in.flight.requests.per.connection** | **允许最多没有返回ack的次数**，**默认为5**，**开启幂等性要保证该值是 1-5的数字。** |
+| retries                                   | 当消息发送出现错误的时候，系统会重发消息。**retries表示重试次数**。默认是int最大值，2147483647。 **如果设置了重试，还想保证消息的有序性，需要设置****MAX_IN_FLIGHT_REQUESTS_PER_CONNECTION=1，否则在重试此失败消息的时候，其他的消息可能发送成功了。** |
+| retry.backoff.ms                          | 两次重试之间的时间间隔，默认是100ms。                        |
+| **enable.idempotence**                    | **是否开启幂等性，默认true，开启幂等性**。                   |
+| compression.type                          | 生产者发送的所有数据的压缩方式。**默认是none，也就是不压缩。** 支持压缩类型：**none、gzip、snappy、lz4和zstd。** |
+
+### 常见问题
+
+#### 吞吐量
+
+提高生产者吞吐量
+
+1. batch.size：修改批次大小，默认16K。
+2. linger.ms：修改等待时间，默认0。
+3. RecordAccumulator：修改缓冲区大小，默认32M：buffer.memory
+4. compression.type：修改压缩，默认none，可配置值：gzip、snappy、lz4和zstd 
+
+```java
+// 4.batch.size: 批次大小，默认16K
+properties.put(ProducerConfig.BATCH_SIZE_CONFIG,16384);
+
+// 5.linger.ms: 等待时间，默认为0
+properties.put(ProducerConfig.LINGER_MS_CONFIG,1);
+
+// 6.RecordAccumulator：缓冲区大小，默认32M：buffer.memory
+properties.put(ProducerConfig.BUFFER_MEMORY_CONFIG,33554432);
+
+// 6.compression.type：压缩，默认none，可配置值gzip、snappy、lz4和zstd
+properties.put(ProducerConfig.COMPRESSION_TYPE_CONFIG,"snappy");
+```
+
+#### 可靠性
+
+##### ack应答
+
+- acks：0，生产者发送过来的数据，不需要等数据落盘应答。Leader节点收到消息之后，在数据落盘之前就挂掉了，则会导致数据丢失。数据可靠性分析：数据丢失。
+
+- acks：1，生产者发送过来的数据，Leader收到数据后应答。应答完成之后，还没开始同步副本，Leader节点就挂掉了，新的Leader不会再收到之前发送的消息，因为生产者已经认为消息发送成功了。 数据可靠性分析：数据丢失。
+
+- acks：-1（all）：生产者发送过来的数据，Leader和ISR队列里面的所有节点收齐数据后应答。
+
+> [!Note]
+>
+> 在生产环境中，acks=0很少使用；
+>
+> acks=1，一般用于传输普通日志，允许丢个别数据；
+>
+> acks=-1，一般用于传输和钱相关的数据，对可靠性要求比较高的场景。
+
+#### 数据去重
+
+##### 数据传递语义
+
+- 至少一次（AtLeastOnce）
+
+  `ACK级别设置为-1` + `分区副本大于等于2` + `ISR里应答的最小副本数量大于等于2`
+
+  可以保证数据不丢失，但是不能保证数据不重复；
+
+- 最多一次（AtMostOnce）
+
+  `ACK级别设置为0`
+
+  可以保证数据不重复，但是不能保证数据不丢失。
+
+- 精确一次（ExactlyOnce
+
+  `幂等性 ` +`至少一次（ack=-1+分区副本数>=2+ISR最小副本数量>=2）`
+
+  对于一些非常重要的信息，比如和钱相关的数据，要求数据既不能重复也不丢失。
+
+##### 幂等性
+
+Kafka0.11版本以后，引入了一项重大特性：幂等性和事务。
+
+**<font color=red>幂等性：就是指Producer不论向Broker发送多少次重复数据，Broker端都只会持久化一条，保证了不重复。</font>**
+
+**重复数据的判断标准**：具有<**PID,Partition,SeqNumber**>相同主键的消息提交时，Broker只会持久化一条：
+
+- **PID是Kafka每次重启都会分配一个新的**
+- Partition表示分区号
+- SequenceNumber是单调自增
+
+**所以幂等性只能保证的是在单分区单会话内不重复。**
+
+![img](Kafka.assets/2591061-20221113224850312-1995088673.png)
+
+开启参数enable.idempotence 默认为true，false关闭。
+
+```properties
+// 8.开启幂等性（开启事务，必须开启幂等性，默认为true）
+properties.put(ProducerConfig.ENABLE_IDEMPOTENCE_CONFIG,true);
+```
+
+##### 生产者事务
+
+![img](Kafka.assets/2591061-20221113225225845-234448918.png)
+
+#### 数据有序性
+
+**Kafka内消息的顺序为：单分区内，有序。多分区内，分区与分区间无序。**
+
+数据单分区有序的配置：
+
+- kafka在1.x版本之前，max.in.flight.requests.per.connection=1（不需要考虑是否开启幂等性）
+
+- kafka在1.x及以后版本保证数据单分区有序：
+
+  - 未开启幂等性：max.in.flight.requests.per.connection需要设置为1。
+  - 开启幂等性：max.in.flight.requests.per.connection需要设置小于等于5。因为在kafka1.x以后，启用幂等后，kafka服务端会缓存producer发来的最近5个request的元数据，故无论如何，都可以保证最近5个request的数据都是有序的
+
+  ![img](Kafka.assets/2591061-20221114081136701-2121854665.png)
+
+## 消费者
+
+### 消费模式
+
+#### 采用pull模式
+
+consumer采用从broker中主动拉取数据。Kafka采用这种方式。
+
+pull模式不足之处是，如果Kafka没有数据，消费者可能会陷入循环中，一直返回空数据。
+
+#### 未采用push模式
+
+Kafka没有采用这种方式，因为由broker决定消息发送速率，很难适应所有消费者的消费速率。
+
+例如推送的速度是50m/s，Consumer1、Consumer2就来不及处理消息。
+
+![img](Kafka.assets/2591061-20221115213130173-1972510553.png)
+
+### 工作流程
+
+![img](Kafka.assets/2591061-20221115213335279-2006972855.png)
+
+###  消费者组机制
+
+kafka中的两种消息模型，队列和发布订阅，就是通过consumer group实现的：
+
+- 队列模型：所有的Consumer实例都属于一个group，即一条消息仅被消费一次。[单播]
+- 发布/订阅模型：所有的Consumer实例都单独使用一个group，即一条消息会被广播到所有消费者。[广播]
+
+![iamge](Kafka.assets/image-20230728164031475.png)
+
+一个主题可以配置几个分区，生产者发送的消息分发到不同的分区中，消费者接收数据的时候是按照消费者组来接收的：
+
+1. **消费者组内每个消费者负责消费不同分区的数据，每个分区的消息只能被同一个消费者组中的同一个消费者消费。** --- 单播
+2. **消费者组之间不影响，每个分区的消息可以被不同消费者组里的消费者消费。** --- 广播
+
+#### 初始化流程
+
+![img](Kafka.assets/2591061-20221115214438434-2017783323.png)
+
+1. 每个consumer都发送JoinGroup请求。
+2. 选出一个consumer作为leader。
+3. 把要消费的topic情况发送给leader 消费者。
+4. leader会负责制定消费方案。
+5. 把消费方案发给coordinator。
+6. Coordinator就把消费方案下发给各个consumer。
+7. **每个消费者都会和coordinator保持心跳（默认3s）****，一旦超时（session.timeout.ms=45s），该消费者会被移除，并触发再平衡；****或者消费者处理消息的时间过长（max.poll.interval.ms5分钟），也会触发再平衡**。
+
+####  分区分配策略及重平衡
+
+一个consumer group中有多个consumer组成，一个topic有多个partition组成。那么问题来了，到底由哪个consumer来消费哪个partition的数据？
+
+Kafka有四种主流的分区分配策略：
+
+- Range
+- 轮询策略RoundRobin
+- 粘性分区策略，包括Sticky、CooperativeSticky，CooperativeSticky和Sticky类似，只是支持了cooperative协议。
+
+可以通过配置参数partition.assignment.strategy，修改分区的分配策略。
+
+**默认策略是Range +  CooperativeSticky**。Kafka可以同时使用多个分区分配策略。
+
+##### Range策略
+
+###### 算法逻辑
+
+RangeAssignor对每个Topic进行独立的分区分配。对于每一个Topic，首先对分区按照分区ID进行排序，然后订阅这个Topic的消费组的消费者再进行排序，之后尽量均衡的将分区分配给消费者。这里只能是尽量均衡，因为分区数可能无法被消费者数量整除，那么有一些消费者就会多分配到一些分区。
+
+![img](Kafka.assets/2591061-20221115230155913-478307349.png)
+
+Range策略：首先对同一个Topic里面的分区按照序号进行排序，并对消费者按照字母顺序进行排序。然后用Partitions分区的个数除以消费者线程的总数来决定每个消费者线程消费几个分区。假设n=分区数/消费者数量，m=分区数%消费者数量，那么前m个消费者每个分配n+1个分区，后面的（消费者数量-m）个消费者每个分配n个分区。
+
+###### 例子
+
+假如有10个分区，3个消费者线程，把分区按照序号排列0，1，2，3，4，5，6，7，8，9；消费者线程为C1-0，C2-0，C2-1，那么用partition数除以消费者线程的总数来决定每个消费者线程消费几个partition，如果除不尽，前面几个消费者将会多消费一个分区。在我们的例子里面，我们有10个分区，3个消费者线程，10/3 = 3，而且除除不尽，那么消费者线程C1-0将会多消费一个分区，所以最后分区分配的结果看起来是这样的：
+
+ ```text
+ C1-0：0，1，2，3
+ C2-0：4，5，6
+ C2-1：7，8，9
+ ```
+
+如果有11个分区将会是：
+
+ ```text
+ C1-0：0，1，2，3
+ C2-0：4，5，6，7
+ C2-1：8，9，10
+ ```
+
+ 假如我们有两个主题T1,T2，分别有10个分区，最后的分配结果将会是这样：
+
+ ```text
+ C1-0：T1（0，1，2，3） T2（0，1，2，3）
+ C2-0：T1（4，5，6） T2（4，5，6）
+ C2-1：T1（7，8，9） T2（7，8，9）
+ ```
+
+如果有 N 多个 topic，那么针对每个 topic，消费者 C1-0 都将多消费 1 个分区，topic越多，C1-0 消费的分区会比其他消费者明显多消费 N 个分区。这就是 Range 范围分区的一个很明显的弊端。即，**多个topic的时候Range分区策略容易产生数据倾斜！**
+
+##### RoundRobin
+
+RoundRobin策略的原理是将消费组内所有消费者以及消费者所订阅的所有topic的partition按照字典序排序【==注意的是这里排序的是该消费者组订阅的所有topic的partition，和策略1中的range不同，range是一个topic 一个topic的排序分配==】，然后通过轮询方式逐个将分区以此分配给每个消费者。
+
+![img](Kafka.assets/2591061-20221116083226933-2076235277.png)
+
+RoundRobinAssignor的分配策略是将消费组内订阅的所有Topic的分区及所有消费者进行排序后尽量均衡的分配（RangeAssignor是针对单个Topic的分区进行排序分配的）。
+
+如果消费组内，消费者订阅的Topic列表是相同的（每个消费者都订阅了相同的Topic），那么分配结果是尽量均衡的（消费者之间分配到的分区数的差值不会超过1）。如果订阅的Topic列表是不同的，那么分配结果是不保证“尽量均衡”的，因为某些消费者不参与一些Topic的分配。
+
+##### StickyAssignor
+
+**粘性分区定义**：可以理解为分配的结果带有“粘性的”。**即在执行一次新的分配之前，考虑上一次分配的结果，尽量少的调整分配的变动，可以节省大量的开销。**
+
+ 粘性分区是Kafka从0.11.x版本开始引入这种分配策略，首先会尽量均衡的放置分区到消费者上面，在出现同一消费者组内消费者出现问题的时候，会尽量保持原有分配的分区不变化,它主要有两个目的：
+
+1. 分区的分配要尽可能的均匀，分配给消费者者的主题分区数最多相差一个；
+2. 分区的分配尽可能的与上次分配的保持相同。
+
+当两者发生冲突时，第一个目标优先于第二个目标。
+
+###### 例子
+
+（一）例子一
+
+假设消费组内有3个消费者：C0、C1和C2，它们都订阅了4个主题：t0、t1、t2、t3，并且每个主题有2个分区，也就是说整个消费组订阅了t0p0、t0p1、t1p0、t1p1、t2p0、t2p1、t3p0、t3p1这8个分区。最终的分配结果如下：
+
+```armasm
+消费者C0：t0p0、t1p1、t3p0
+消费者C1：t0p1、t2p0、t3p1
+消费者C2：t1p0、t2p1
+```
+
+这样初看上去似乎与采用RoundRobinAssignor策略所分配的结果相同，但事实是否真的如此呢？
+
+此时假设消费者C1脱离了消费组，那么消费组就会执行再平衡操作，进而消费分区会重新分配。如果采用RoundRobinAssignor策略，那么此时的分配结果如下：
+
+```armasm
+消费者C0：t0p0、t1p0、t2p0、t3p0
+消费者C2：t0p1、t1p1、t2p1、t3p1
+```
+
+如分配结果所示，RoundRobinAssignor策略会按照消费者C0和C2进行重新轮询分配。而如果此时使用的是StickyAssignor策略，那么分配结果为：
+
+```armasm
+消费者C0：t0p0、t1p1、t3p0、t2p0
+消费者C2：t1p0、t2p1、t0p1、t3p1
+```
+
+可以看到分配结果中**保留了上一次分配中对于消费者C0和C2的所有分配结果**，并将原来消费者C1的“负担”分配给了剩余的两个消费者C0和C2，最终C0和C2的分配还保持了均衡。
+
+（二）例子二：来看一下订阅信息不同的情况下的处理。
+
+举例，同样消费组内有3个消费者：C0、C1和C2，集群中有3个主题：t0、t1和t2，这3个主题分别有1、2、3个分区，也就是说集群中有t0p0、t1p0、t1p1、t2p0、t2p1、t2p2这6个分区。消费者C0订阅了主题t0，消费者C1订阅了主题t0和t1，消费者C2订阅了主题t0、t1和t2。
+
+如果此时采用RoundRobinAssignor策略，那么最终的分配结果如下所示（和讲述RoundRobinAssignor策略时的一样，这样不妨赘述一下）：
+
+```armasm
+消费者C0：t0p0
+消费者C1：t1p0
+消费者C2：t1p1、t2p0、t2p1、t2p2
+```
+
+如果此时采用的是StickyAssignor策略，那么最终的分配结果为：
+
+```armasm
+消费者C0：t0p0
+消费者C1：t1p0、t1p1
+消费者C2：t2p0、t2p1、t2p2
+```
+
+可以看到这是一个最优解（消费者C0没有订阅主题t1和t2，所以不能分配主题t1和t2中的任何分区给它，对于消费者C1也可同理推断）。
+
+假如此时消费者C0脱离了消费组，那么RoundRobinAssignor策略的分配结果为：
+
+```armasm
+消费者C1：t0p0、t1p1
+消费者C2：t1p0、t2p0、t2p1、t2p2
+```
+
+可以看到RoundRobinAssignor策略保留了消费者C1和C2中原有的3个分区的分配：t2p0、t2p1和t2p2（针对结果集1）。而如果采用的是StickyAssignor策略，那么分配结果为：
+
+```armasm
+消费者C1：t1p0、t1p1、t0p0
+消费者C2：t2p0、t2p1、t2p2
+```
+
+可以看到StickyAssignor策略保留了消费者C1和C2中原有的5个分区的分配：t1p0、t1p1、t2p0、t2p1、t2p2。
+
+###### 算法逻辑
+
+粘性策略的代码实现很复杂，大致知道有这个东西就行了。
+
+StickyAssignor分配算法的核心逻辑如下：
+
+1. 先构建出当前的分配状态：currentAssignment
+   1. 如果currentAssignment为空，则是全新的分配
+2. 构建出partition2AllPotentialConsumers和consumer2AllPotentialPartitions两个辅助后续分配的数据结构
+   1. partition2AllPotentialConsumers是一个Map<TopicPartition, List>，记录着每个Partition可以分配给哪些Consumer
+   2. consumer2AllPotentialPartitions是一个Map<String, List>，记录着每个Consumer可以分配的Partition列表
+3. 补全currentAssignment，将不属于currentAssignment的Consumer添加进去（如果新增了一个Consumer，这个Consumer上一次是没参与分配的，新添加进去分配的Partition列表为空）
+4. 构建出currentPartitionConsumer来用于辅助的分配，currentPartitionConsumer记录了当前每个Partition分配给了哪个Consumer——就是把currentAssignment从Consumer作为Key转换到Partition作为Key用于辅助分配
+5. 对所有分区进行排序（排序结果为sortedPartitions），排序有两种规则：
+   1. 如果不是初次分配，并且每个Consumer订阅是相同的：
+      1. 对Consumer按照它所分配的Partition数进行排序
+      2. 按照上一步的排序结果，将每个Consumer分配的分区插入到List中（List就是排序后的分区）
+      3. 将不属于任何Consumer的分区加入List中
+   2. 否则：分区之间按照可以被分配的Consumer的数量进行排序
+6. 构造unassignedPartitions记录所有要被分配的分区（初始为上一步排序过的所有分区，后续进行调整：将已分配的，不需要移除了Partition从unassignedPartitions中移除）
+7. 进行分区调整，来达到分区分配均衡的目的；分区的Rebalance包含多个步骤
+   1. 将上一步未分配的分区（unassignedPartitions）分配出去。分配的策略是：按照当前的分配结果，每一次分配时将分区分配给订阅了对应Topic的Consumer列表中拥有的分区最少的那一个Consumer
+   2. 校验每一个分区是否需要调整，如果分区不需要调整，则从sortedPartitions中移除。分区是否可以被调整的规则是：如果这个分区是否在partition2AllPotentialConsumers中属于两个或超过两个Consumer。
+   3. 校验每个Consumer是否需要调整被分配的分区，如果不能调整，则将这个Consumer从sortedCurrentSubscriptions中移除，不参与后续的重分配。判断是否调整的规则是：如果当前Consumer分配的分区数少于它可以被分配的最大分区数，或者它的分区满足上一条规则。
+   4. 将以上步骤中获取的可以进行重分配的分区，进行重新的分配。每次分配时都进行校验，如果当前已经达到了均衡的状态，则终止调整。均衡状态的判断依据是Consumer之间分配的分区数量的差值不超过1；或者所有Consumer已经拿到了它可以被分配的分区之后仍无法达到均衡的上一个条件（比如c1订阅t1，c2订阅t2，t1 t2分区数相差超过1，此时没法重新调整）。如果不满足上面两个条件，且一个Consumer所分配的分区数少于同一个Topic的其他订阅者分配到的所有分区的情况，那么还可以继续调整，属于不满足均衡的情况。
+8. 后续流程和普通分配一致
 
 
-## 消费者组重平衡机制
 
-###  Kafka中有哪几种协调器
+1. 先构建出当前的分配状态：currentAssignment
+   1. 如果currentAssignment为空，则是全新的分配
+2. 构建出partition2AllPotentialConsumers和consumer2AllPotentialPartitions两个辅助后续分配的数据结构
+   1. partition2AllPotentialConsumers是一个Map<TopicPartition, List<String>>，记录着每个Partition可以分配给哪些Consumer
+   2. consumer2AllPotentialPartitions是一个Map<String, List<TopicPartition>>，记录着每个Consumer可以分配的Partition列表
+3. 补全currentAssignment，将不属于currentAssignment的Consumer添加进去（如果新增了一个Consumer，这个Consumer上一次是没参与分配的，新添加进去分配的Partition列表为空）
+4. 构建出currentPartitionConsumer来用于辅助的分配，currentPartitionConsumer记录了当前每个Partition分配给了哪个Consumer——就是把currentAssignment从Consumer作为Key转换到Partition作为Key用于辅助分配
+5. 对所有分区进行排序（排序结果为sortedPartitions），排序有两种规则：
+   1. 如果不是初次分配，并且每个Consumer订阅是相同的：
+      1. 对Consumer按照它所分配的Partition数进行排序
+      2. 按照上一步的排序结果，将每个Consumer分配的分区插入到List中（List就是排序后的分区）
+      3. 将不属于任何Consumer的分区加入List中
+   2. 否则：分区之间按照可以被分配的Consumer的数量进行排序
+6. 构造unassignedPartitions记录所有要被分配的分区（初始为上一步排序过的所有分区，后续进行调整：将已分配的，不需要移除了Partition从unassignedPartitions中移除）
+7. 进行分区调整，来达到分区分配均衡的目的；分区的Rebalance包含多个步骤
+   1. 将上一步未分配的分区（unassignedPartitions）分配出去。分配的策略是：按照当前的分配结果，每一次分配时将分区分配给订阅了对应Topic的Consumer列表中拥有的分区最少的那一个Consumer
+   2. 校验每一个分区是否需要调整，如果分区不需要调整，则从sortedPartitions中移除。分区是否可以被调整的规则是：如果这个分区是否在partition2AllPotentialConsumers中属于两个或超过两个Consumer。
+   3. 校验每个Consumer是否需要调整被分配的分区，如果不能调整，则将这个Consumer从sortedCurrentSubscriptions中移除，不参与后续的重分配。判断是否调整的规则是：如果当前Consumer分配的分区数少于它可以被分配的最大分区数，或者它的分区满足上一条规则。
+   4. 将以上步骤中获取的可以进行重分配的分区，进行重新的分配。每次分配时都进行校验，如果当前已经达到了均衡的状态，则终止调整。均衡状态的判断依据是Consumer之间分配的分区数量的差值不超过1；或者所有Consumer已经拿到了它可以被分配的分区之后仍无法达到均衡的上一个条件（比如c1订阅t1，c2订阅t2，t1 t2分区数相差超过1，此时没法重新调整）。如果不满足上面两个条件，且一个Consumer所分配的分区数少于同一个Topic的其他订阅者分配到的所有分区的情况，那么还可以继续调整，属于不满足均衡的情况。
+8. 后续流程和普通分配一致
+
+###  协调器
 
 ![11](Kafka.assets/image-20230729081601345.png)
 Kafka中主要有两种协调器：
@@ -460,9 +795,31 @@ Kafka中主要有两种协调器：
 3. 消费者群组处于 PreparingRebalance 状态后，很不幸，没人玩儿了，所有消费者都离开了，这时候还可能会保留有消费者消费的位移数据，一旦位移数据过期或者被刷新，那么消费者群组就处于 `Dead` 状态了
 4. 在 `PreparingRebalance`或者 `CompletingRebalance` 或者 `Stable` 任意一种状态下发生位移主题分区 Leader 发生变更，群组会直接处于 Dead 状态
 
-### 重平衡
+### 常见问题
 
-即消费者组分区分配策略，重新为消费者组内成员分配分区。
+#### 消费者事务
 
+##### 重复消费和漏消费
 
+重复消费：已经消费了数据，但是offset没提交。 
 
+漏消费：先提交offset后消费，有可能会造成数据的漏消费。
+
+ ![img](Kafka.assets/2591061-20221117235010389-503479062.png)
+
+ 如何做到既不漏消费也不重复消费呢？**消费者事务**
+
+##### 消费者事务
+
+ **如果想完成Consumer端的精准一次性消费，那么需要Kafka消费端将消费过程和提交offset过程做原子绑定。**
+
+#### 吞吐量
+
+ 1）如果是Kafka消费能力不足，则可以考虑增加Topic的分区数，并且同时提升消费组的消费者数量，**消费者数=分区数（两者缺一不可）**。
+
+ 2）如果是下游的数据处理不及时：**提高每批次拉取的数量**。批次拉取数据过少（拉取数据/处理时间 小于 生产速度），使处理的数据小于生产的数据，也会造成数据积压。 
+
+| 参数名称         | 描述                                                         |
+| ---------------- | ------------------------------------------------------------ |
+| fetch.max.bytes  | 默认Default: 52428800（50 m）。消费者获取服务器端一批消息最大的字节数。如果服务器端一批次的数据大于该值（50m）仍然可以拉取回来这批数据，因此，这不是一个绝对最大值。一批次的大小受message.max.bytes （broker config）or max.message.bytes （topic config）影响。 |
+| max.poll.records | 一次poll拉取数据返回消息的最大条数，默认是500条              |

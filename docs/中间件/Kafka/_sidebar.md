@@ -1,4 +1,4 @@
 - [根目录](/README)
-- [Kafka基础](/中间件/Kafka/Kafka.md)
+- [基础](/中间件/Kafka/Kafka.md)
 - [Kafka八股](/中间件/Kafka/Kafka八股.md)
 
