@@ -570,12 +570,17 @@ Kakfa引入Leader Epoch后，Follower就不再参考HW，而是根据Leader Epoc
 2. partition 的多个副本应该分配在不同的 Broker 上;
 3. 如果所有的 Broker 有机架信息的话, partition 的副本应该分配到不同的机架上。
 
+ 在创建主题时 ：
+
+- 如果使用了replica-assignment 参数，那么就按照指定的方案来进行分区副本的创建；
+- 如果没有指定replica-assignment 参数，那么就按照Kafka内部逻辑来分配，内部逻辑按照机架信息分为两种策略：**无机架分配** 和 **有机架分配**。
+
 #### 无机架分配
 
-所有的broker都没有配置机架信息
+所有的broker都没有配置机架信息，分配逻辑为：
 
-1. 从 broker.list 随机选择一个 Broke作为分区的第一个副本,随机生成副本间隔参数nextReplicaShit，用以分配下一个副本
-2. 分配后面的分区,分区的第一个副本位置都是按照broker list顺序遍历的;
+1. 从 broker.list 随机选择一个 Broke作为分区的第一个副本，随机生成副本间隔参数nextReplicaShit，用以分配下一个副本
+2. 分配后面的分区，分区的第一个副本位置都是按照broker list顺序遍历的;
 3. 对于副本分配来说,每经历一轮Broker List的遍历，nextReplicaShit参数+1;
 
 ![image](Kafka.assets/image-20230729075252627.png)
@@ -614,6 +619,15 @@ A：
 机架感知的意思是Kafka会把partition的各个replicas分散到不同的机架上，以提高机架故障时的数据安全性。
 
 有机架分配按照交替机架的方式来选择broker：假设broker0、broker1和broker2放置在同一个机架上，broker3、broker4、broker5分别放置在其它不同的机架上。我们不是按照0-5的顺序来选择broker，而是按照0，3，1，4，2，5的顺序来选择，这样每个相邻的broker都在不同的机架上。
+
+**vs 无机架分配的不同**
+
+1、按照交替机架的顺序来选择broker
+
+2、不是简单地将这个broker添加到当前分区的副本列表中，而是还要经过一层筛选，满足以下任意一个条件的broker不能添加：
+
+- 如果此broker所在的机架已经存在一个broker拥有该分区的副本，并且还有其他机架中没有任何一个broker拥有该分区的副本。
+- 如果此broker已经拥有该分区的副本，并且还有其他broker中没有该分区的副本。
 
 ## 生产者
 
@@ -871,7 +885,7 @@ Range策略：首先对同一个Topic里面的分区按照序号进行排序，�
 
 ##### RoundRobin
 
-RoundRobin策略的原理是将消费组内所有消费者以及消费者所订阅的所有topic的partition按照字典序排序【==注意的是这里排序的是该消费者组订阅的所有topic的partition，和策略1中的range不同，range是一个topic 一个topic的排序分配==】，然后通过轮询方式逐个将分区以此分配给每个消费者。
+RoundRobin策略的原理是将消费组内所有消费者以及消费者所订阅的所有topic的partition按照字典序排序【<font color=red>**注意的是这里排序的是该消费者组订阅的所有topic的partition，和策略1中的range不同，range是一个topic 一个topic的排序分配**</font>】，然后通过轮询方式逐个将分区以此分配给每个消费者。
 
 ![img](Kafka.assets/2591061-20221116083226933-2076235277.png)
 
@@ -969,29 +983,6 @@ StickyAssignor分配算法的核心逻辑如下：
 2. 构建出partition2AllPotentialConsumers和consumer2AllPotentialPartitions两个辅助后续分配的数据结构
    1. partition2AllPotentialConsumers是一个Map<TopicPartition, List>，记录着每个Partition可以分配给哪些Consumer
    2. consumer2AllPotentialPartitions是一个Map<String, List>，记录着每个Consumer可以分配的Partition列表
-3. 补全currentAssignment，将不属于currentAssignment的Consumer添加进去（如果新增了一个Consumer，这个Consumer上一次是没参与分配的，新添加进去分配的Partition列表为空）
-4. 构建出currentPartitionConsumer来用于辅助的分配，currentPartitionConsumer记录了当前每个Partition分配给了哪个Consumer——就是把currentAssignment从Consumer作为Key转换到Partition作为Key用于辅助分配
-5. 对所有分区进行排序（排序结果为sortedPartitions），排序有两种规则：
-   1. 如果不是初次分配，并且每个Consumer订阅是相同的：
-      1. 对Consumer按照它所分配的Partition数进行排序
-      2. 按照上一步的排序结果，将每个Consumer分配的分区插入到List中（List就是排序后的分区）
-      3. 将不属于任何Consumer的分区加入List中
-   2. 否则：分区之间按照可以被分配的Consumer的数量进行排序
-6. 构造unassignedPartitions记录所有要被分配的分区（初始为上一步排序过的所有分区，后续进行调整：将已分配的，不需要移除了Partition从unassignedPartitions中移除）
-7. 进行分区调整，来达到分区分配均衡的目的；分区的Rebalance包含多个步骤
-   1. 将上一步未分配的分区（unassignedPartitions）分配出去。分配的策略是：按照当前的分配结果，每一次分配时将分区分配给订阅了对应Topic的Consumer列表中拥有的分区最少的那一个Consumer
-   2. 校验每一个分区是否需要调整，如果分区不需要调整，则从sortedPartitions中移除。分区是否可以被调整的规则是：如果这个分区是否在partition2AllPotentialConsumers中属于两个或超过两个Consumer。
-   3. 校验每个Consumer是否需要调整被分配的分区，如果不能调整，则将这个Consumer从sortedCurrentSubscriptions中移除，不参与后续的重分配。判断是否调整的规则是：如果当前Consumer分配的分区数少于它可以被分配的最大分区数，或者它的分区满足上一条规则。
-   4. 将以上步骤中获取的可以进行重分配的分区，进行重新的分配。每次分配时都进行校验，如果当前已经达到了均衡的状态，则终止调整。均衡状态的判断依据是Consumer之间分配的分区数量的差值不超过1；或者所有Consumer已经拿到了它可以被分配的分区之后仍无法达到均衡的上一个条件（比如c1订阅t1，c2订阅t2，t1 t2分区数相差超过1，此时没法重新调整）。如果不满足上面两个条件，且一个Consumer所分配的分区数少于同一个Topic的其他订阅者分配到的所有分区的情况，那么还可以继续调整，属于不满足均衡的情况。
-8. 后续流程和普通分配一致
-
-
-
-1. 先构建出当前的分配状态：currentAssignment
-   1. 如果currentAssignment为空，则是全新的分配
-2. 构建出partition2AllPotentialConsumers和consumer2AllPotentialPartitions两个辅助后续分配的数据结构
-   1. partition2AllPotentialConsumers是一个Map<TopicPartition, List<String>>，记录着每个Partition可以分配给哪些Consumer
-   2. consumer2AllPotentialPartitions是一个Map<String, List<TopicPartition>>，记录着每个Consumer可以分配的Partition列表
 3. 补全currentAssignment，将不属于currentAssignment的Consumer添加进去（如果新增了一个Consumer，这个Consumer上一次是没参与分配的，新添加进去分配的Partition列表为空）
 4. 构建出currentPartitionConsumer来用于辅助的分配，currentPartitionConsumer记录了当前每个Partition分配给了哪个Consumer——就是把currentAssignment从Consumer作为Key转换到Partition作为Key用于辅助分配
 5. 对所有分区进行排序（排序结果为sortedPartitions），排序有两种规则：
