@@ -112,7 +112,7 @@ Kafka架构中的组件主要包括：
     1. 管理和协调Broker，broker的注册、出现故障的broker等
     2. 存储元数据，Kafka有多少topic、partition、consumer；topic各个partition的offset等
 
-### KafkaController
+### Kafka-Controller
 
 #### Controller的职责
 
@@ -165,6 +165,34 @@ Kafka 当前选举控制器的规则是：==Kafka 集群中第一个启动的 br
 解决方法：
 
 为了解决Controller脑裂问题，ZooKeeper中还有一个与Controller有关的持久节点/controller_epoch，存放的是一个整形值的epoch number（纪元编号，也称为隔离令牌），集群中每选举一次控制器，就会通过Zookeeper创建一个数值更大的epoch number，如果有broker收到比这个epoch数值小的数据，就会忽略消息。
+
+### zookeeper
+
+![img](Kafka.assets/2591061-20221114082441067-988365937.png)
+
+Zookeeper中存储的信息有：
+
+- /kafka/brokers/ids：[0,1,2]，记录有哪些服务器。
+
+- /kafka/brokers/topics/first/partitions/0/state：{"leader":1,"isr":[1,0,2] } 记录谁是Leader，有哪些服务器可用。
+
+- /kafka/controller：{“brokerid”:0} 辅助选举Leader
+
+### broker启动流程
+
+![img](Kafka.assets/2591061-20221114082355336-102953134.png)
+
+1. broker启动后在zk中注册
+2. controller谁先注册，谁说了算
+3. 由选举出来的controller监听brokers节点变化
+4. controller决定Leader选举
+5. controller将节点信息上传到zk中
+6. 其他controller从zk同步相关信息
+7. 假设broker1中Leader挂了
+8. controller监听到节点发生变化
+9. 获取ISR
+10. 选举新的Leader（在isr中存活为前提，按照AR中排在前面的优先，例如：ar[1,0,2]，那么leader就会按照1,0,2的顺序轮询）
+11. 更新Leader及ISR
 
 ##  分区机制【高吞吐】
 
@@ -235,44 +263,76 @@ public int partition(String topic, Object key, byte[] keyBytes,
 
 在kafka中，每个主题可以有多个分区，每个分区又可以有多个副本。这多个副本中，只有一个是leader，而其他的都是follower副本。仅有leader副本可以对外提供服务。多个follower副本通常存放在和leader副本不同的broker中。通过这样的机制实现了高可用，当某台机器挂掉后，其他follower副本也能迅速”转正“，开始对外提供服务。
 
-###  副本都有哪些作用
+###  副本概念
+
+#### 副本作用
 
 在kafka中，实现副本的目的就是冗余备份，且仅仅是冗余备份，所有的读写请求都是由leader副本进行处理的。follower副本仅有一个功能，那就是从leader副本拉取消息，尽量让自己跟leader副本的内容一致。
 
-### follower副本为什么不对外提供服务
+#### 副本分类
+
+Kafka中副本分为：Leader和Follower。
+
+Kafka生产者只会把数据发往Leader，然后Follower找Leader进行同步数据。
+
+#### AR/ISR/OSR
+
+Kafka分区中的所有副本统称为AR（Assigned Repllicas），AR = ISR + OSR。
+
+- ISR，表示和Leader保持同步的Follower集合。如果Follower长时间未向Leader发送通信请求或同步数据，则该Follower将被踢出ISR。该时间阈值由replica.lag.time.max.ms参数设定，默认30s。Leader发生故障之后，就会从ISR中选举新的Leader。
+
+- OSR，表示Follower与Leader副本同步时，延迟过多的副本。
+
+#### follower副本为什么不对外提供服务
 
 这个问题本质上是对性能和一致性的取舍。
 
 性能虽然提升了，但可能出现数据不一致的问题，例如现在写入一条数据到kafka主题a，消费者b从主题a消费数据，却发现消费不到，因为消费者b去读取的那个分区副本中，最新消息还没写入。而这个时候，另一个消费者c却可以消费到最新那条数据，因为它消费了leader副本。
 
-### leader副本挂掉后，如何选举新副本
+### Leader选举
+
+Kafka集群中有一个broker的Controller会被选举为Controller Leader，**负责管理集群broker的上下线，所有topic的分区副本分配和Leader选举等工作**。Controller的信息同步工作是依赖于Zookeeper的。 
+
+![img](Kafka.assets/2591061-20221114082550997-1908598791.png)
+
+#### 选举策略
 
 副本leader的选举是由kafka controller执行的。
 
-在Kafka集群中，常见的LeaderReplica选举策略有以下三种：
+在Kafka集群中，常见的LeaderReplica选举策略有以下三种。
 
-1. 首选副本选举策略。在这种策略下，每个分区都有一个首选副本（Preferred Replica），通常是副本集合中的第一个副本。当触发选举时，控制器会优先选择该首选副本作为新的Leader Replica，只有在首选副本不可用的情况下，才会考虑其他副本。
+##### 首选副本选举策略
 
-   > 当然，也可以使用命令手动指定每个分区的首选副本：
-   > bin/kafka-topics.sh--zookeeperlocalhost:2181--topicmy-topic-name--replica-assignment
-   > 0:1,1:2,2:0--partitions 3
-   > 意思是：my-topic-name有3个partition，partitiono的首选副本是Broker1，partition1首选副本
-   > 是Broker2，partition2的首选副本是Brokero。
+在这种策略下，每个分区都有一个首选副本（Preferred Replica），通常是副本集合中的第一个副本。当触发选举时，控制器会优先选择该首选副本作为新的Leader Replica，只有在首选副本不可用的情况下，才会考虑其他副本。
 
-2. ISR[In-Sync Replicas 副本同步队列]选举策略：即从 AR 中挑选首个在 ISR 中的副本，作为新 Leader。（AR[Assigned Replicas]是所有副本的集合，其顺序在创建时即定好）
+> 当然，也可以使用命令手动指定每个分区的首选副本：
+> bin/kafka-topics.sh--zookeeperlocalhost:2181--topicmy-topic-name--replica-assignment
+> 0:1,1:2,2:0--partitions 3
+> 意思是：my-topic-name有3个partition，partitiono的首选副本是Broker1，partition1首选副本
+> 是Broker2，partition2的首选副本是Brokero。
 
-3. UncleanLeader选举策略。当所有SR副本都不可用时。在这种情况下，会从所有副本中（包含OsR[Out-of-Sync Replicas 非同步副本队列]集合）选择一个副本作为新的Leader副本，即使这个副本与当前Leader副本不同步。这种选举策略可能会导致数据丢失，因此只应在紧急情况下使用。
+##### 副本同步队列选举策略：
 
-   > 修改下面的配置，可以开启UncleanLeader选举策略，默认关闭。
-   > unclean.leader.election.enable=true
+ISR[In-Sync Replicas 副本同步队列]选举策略，从 AR 中挑选首个在 ISR 中的副本，作为新 Leader。
 
-### 在ISR中保留的条件
+（AR[Assigned Replicas]是所有副本的集合，<font color=red>其顺序在创建时即定好</font>）
+
+##### UncleanLeader选举策略
+
+当所有SR副本都不可用时。在这种情况下，会从所有副本中（包含OsR[Out-of-Sync Replicas 非同步副本队列]集合）选择一个副本作为新的Leader副本，即使这个副本与当前Leader副本不同步。
+
+这种选举策略可能会导致数据丢失，因此只应在紧急情况下使用。
+
+> 修改下面的配置，可以开启UncleanLeader选举策略，默认关闭。
+> unclean.leader.election.enable=true
+
+#### 在ISR中保留的条件
 
 其实跟一个参数有关：replica.lag.time.max.ms。【副本同步最大时间】
 
 如果持续拉取速度慢于leader副本写入速度，慢于时间超过replica.lag.time.max.ms后，它就变成“非同步”副本，就会被踢出ISR副本集合中。但后面如何follower副本的速度慢慢提上来，那就又可能会重新加入ISR副本集合中了。
 
-### 触发ISR选举的时机
+#### 触发ISR选举的时机
 
 1. Leader Replica失效：当Leader Replica出现故障或失去连接时选举。
 2. Broker岩机：当LeaderReplica所在的Broker节点发生故障或者岩机时，Kafka也会触发
@@ -287,21 +347,130 @@ public int partition(String topic, Object key, byte[] keyBytes,
 
 ### 副本同步策略
 
-#### 同步复制
+Kafka的复制机制既不是完全的同步复制，也不是单纯的异步复制，**而是基于ISR的动态复制方案**。
 
-过程如下：
+同步机制要求所有能工作的follower都复制完，这条消息才会被commit，这种复制方式极大的影响了吞吐率。
 
-1. producer 向leader副本写入消息
-2. leader副本收到消息后会把消息写入到本地 log
-3. follower 副本会从leader副本那里拉取消息
-4. follower 副本向本地写入 log
-5. follower 副本向leader副本发送写入成功的消息
-6. leader副本会收到所有的follower发送的消息
-7. leader副本向producer发送写入成功的消息
+异步复制方式下，follower异步的从leader复制数据，数据只要被Leader写入log就被任务已经commit，这种情况下如果follower没有全复制完，落后与Leader，突然leader宕机，则会丢数据。
 
-###   异步复制
+因此，Kafka使用的是基于ISR的动态复制，由Leader动态维护ISR集合，如果Follower不能紧“跟上”Leader，它将被Leader从ISR中移除，待它又重新“跟上”Leader后，会被Leader再次加加ISR中。每次改变ISR后，Leader都会将最新的ISR持久化到Zookeeper中。
 
-和同步复制的区别在于，leader 副本在写入本地log之后[即上面步骤2]，直接向客户端发送写入成功消息[上面步骤7]，不需要等待所有跟随者复制完成。
+Kafka这种使用ISR的方式则很好的均衡了确保数据不丢失以及吞吐率。
+
+> [!note]如何理解这个呢？
+>
+> 我的理解是，分为两个层面：
+>
+> 1、Kafka利用动态的ISR集合，作为哪些需要进行同步，在整体上，这点是让它区分完全的同步和异步的关键点。
+>
+> 2、对于ISR局部中，依然可以选择同步【ISR副本集合全部同步完成】还是异步【Leader写完即返回】，对应`acks`参数。
+
+#### 常见的同步策略
+
+##### 同步复制
+
+写完leader之后，同时也要保证follower写入完成，leader只要返回，就代表数据主副本都写入成功，可以保证强的一致性，但是会降低可用性。
+
+#####   异步复制
+
+写完leader之后，leader就可以返回，告诉客户端数据写入成功，然后follower异步的从leader获取最新数据，可以是leader异步push，也可以是follower异步pull。
+
+#### ISR复制机制
+
+##### 高水位
+
+在 kafka 中，高水位的作用主要是 2 个：
+
+- 定义消息可见性，既用来告诉我们的消费者哪些消息是可以进行消费的
+- 帮助 kafka 完成副本机制的同步
+
+每个 kafka 副本对象都有两个重要的属性：LEO 和 HW。**注意是所有的副本（leader + Follower）**
+
+- LEO：当前日志末端的位移（log end offset），记录了该副本底层日志（log）中下一条消息的位移值。
+- HW：高水位值（High Watermark），对于同一个副本对象，其 HW 的值不会超越 LEO。
+
+![image-20230924190958995](Kafka.assets/image-20230924190958995.png)
+
+在高水位线之下的为 已提交消息，在水位线之上的为未提交消息，对于 已提交消息，我们的消费者可以进行消费。
+
+需要关注的是，位移值等于高水位的消息也属于未提交消息。也就是说，高水位上的消息是不能被消费者消费的。
+
+##### 高水位更新机制
+
+![image.png](Kafka.assets/bVc1pCD.png)
+
+![image-20230924194752064](Kafka.assets/image-20230924194752064.png)
+
+###### Leader节点
+
+leader 副本会保存 remote LEO，表示所有 follower LEO集合。
+
+当leader收到请求后：
+
+1. 把消息追加到log文件，同时更新leader副本的LEO
+2. Remote LEO要等到Follower向Leader发送同步请求时，才会根据请求携带的当前Follower LEO值更新。
+3. 随后，Leader计算所有副本LEO的最小值，将其作为新的Leader HW。
+
+###### Follow节点
+
+Follower在接收到Leader的响应（Response）后：
+
+1. 首先将消息写入.log文件中，随后更新Follower LEO
+2. 由于Response中携带了新的Leader HW，Follower将其与刚刚更新过的Follower LEO相比较，取最小值作为Follower HW
+
+###### 举例
+
+如果一开始Leader和Follower中没有任何数据，即所有值均为0。那么当Prouder向Leader写入第一条消息，上述几个值的变化顺序如下：
+
+|                    | Leader LEO | Remote LEO | Leader HW | Follower LEO | Follower HW |
+| ------------------ | ---------- | ---------- | --------- | ------------ | ----------- |
+| Producer Write     | 1          | 0          | 0         | 0            | 0           |
+| Follower Fetch     | 1          | 0          | 0         | 0            | 0           |
+| Leader Update HW   | 1          | 0          | 0         | 0            | 0           |
+| Leader Response    | 1          | 0          | 0         | 1            | 0           |
+| Follower Update HW | 1          | 0          | 0         | 1            | 0           |
+| Follower Fetch     | 1          | 1          | 0         | 1            | 0           |
+| Leader Update HW   | 1          | 1          | 1         | 1            | 0           |
+| Leader Response    | 1          | 1          | 1         | 1            | 0           |
+| Follower Update HW | 1          | 1          | 1         | 1            | 1           |
+
+###### 劣势
+
+通过上面的表格我们发现，Follower往往需要进行两次Fetch请求才能成功更新HW。Follower HW在某一阶段内总是落后于Leader HW，因此副本在根据HW值截取数据时将有可能发生数据的丢失或不一致。
+
+![202103241107](Kafka.assets/202103241107.jpeg)
+
+图中两副本的LEO均为2，但Leader副本B上的HW为2，Follower副本A上的HW为1。正常情况下，副本A将在接收Leader Response后根据Leader HW更新其Follower HW为2。但假如此时副本A所在的Broker重启，它会把Follower LEO修改为重启前自身的HW值1，因此数据M1（Offset=1）被截断。当副本A重新向副本B发送同步请求时，如果副本B所在的Broker发生宕机，副本A将被选举成为新的Leader。即使副本B所在的Broker能够成功重启且其LEO值依然为2，但只要它向当前Leader（副本A）发起同步请求后就会更新其HW为1（计算`min(Follower LEO, Leader HW)`），数据M1（Offset=1）随即被截断。如果`min.insync.replicas`参数为1，那么Producer不会因副本A没有同步成功而重新发送消息，M1也就永远丢失了。
+
+![202103241119](Kafka.assets/202103241119.jpeg)
+
+图中Leader副本B写入了两条数据M0和M1，Follower副本A只写入了一条数据M0。此时Leader HW为2，Follower HW为1。如果在Follower同步第二条数据前，两副本所在的Broker均发生重启且副本B所在的Broker先重启成功，那么副本A将成为新的Leader。这时Producer向其写入数据M2，副本A作为集群中的唯一副本，更新其HW为2。当副本B所在的Broker重启后，它将向当前的Leader副本A同步数据。由于两者的HW均为2，因此副本B不需要进行任何截断操作。在这种情况下，副本B中的数据为重启前的M0和M1，副本A中的数据却是M0和M2，副本间的数据出现了不一致。
+
+###### Leader Epoch
+
+Kakfa引入Leader Epoch后，Follower就不再参考HW，而是根据Leader Epoch信息来截断Leader中不存在的消息。这种机制可以弥补基于HW的副本同步机制的不足，Leader Epoch由两部分组成：
+
+- Epoch：一个单调增加的版本号。每当Leader副本发生变更时，都会增加该版本号。Epoch值较小的Leader被认为是过期Leader，不能再行使Leader的权力；
+- 起始位移（Start Offset）：Leader副本在该Epoch值上写入首条消息的Offset。
+
+举例来说，某个Partition有两个Leader Epoch，分别为(0, 0)和(1, 100)。这意味该Partion历经一次Leader副本变更，版本号为0的Leader从Offset=0处开始写入消息，共写入了100条。而版本号为1的Leader则从Offset=100处开始写入消息。
+
+每个副本的Leader Epoch信息既缓存在内存中，也会定期写入消息目录下的leaderer-epoch-checkpoint文件中。当一个Follower副本从故障中恢复重新加入ISR中，它将：
+
+1. 向Leader发送LeaderEpochRequest，请求中包含了Follower的Epoch信息；
+2. Leader将返回其Follower所在Epoch的Last Offset；
+3. 如果Leader与Follower处于同一Epoch，那么Last Offset显然等于Leader LEO；
+4. 如果Follower的Epoch落后于Leader，则Last Offset等于Follower Epoch + 1所对应的Start Offset。这可能有点难以理解，我们还是以(0, 0)和(1, 100)为例进行说明：Offset=100的消息既是Epoch=1的Start Offset，也是Epoch=0的Last Offset；
+5. Follower接收响应后根据返回的Last Offset截断数据；
+6. 在数据同步期间，只要Follower发现Leader返回的Epoch信息与自身不一致，便会随之更新Leader Epoch并写入磁盘。
+
+![202103261242](Kafka.assets/202103261242.jpeg)
+
+在刚刚介绍的数据丢失场景中，副本A所在的Broker重启后根据自身的HW将数据M1截断。而现在，副本A重启后会先向副本B发送一个请求（LeaderEpochRequest）。由于两副本的Epoch均为0，副本B返回的Last Offset为Leader LEO值2。而副本A上并没有Offset大于等2的消息，因此无需进行数据截断,同时其HW也会更新为2。之后副本B所在的Broker宕机，副本A成为新的Leader，Leader Epoch随即更新为(1, 2)。当副本B重启回来并向当前Leader副本A发送LeaderEpochRequest，得到的Last Offset为Epoch=1对应的Start Offset值2。同样，副本B中消息的最大Offset值只有1，因此也无需进行数据截断，消息M1成功保留了下来。
+
+![202103261249](Kafka.assets/202103261249.jpeg)
+
+在刚刚介绍的数据不一致场景中，由于最后两副本HW值相等，因此没有将不一致的数据截断。而现在，副本A重启后并便会更新Leader Epoch为(1, 1)，同时也会更新其HW值为2。副本B重启后向当前Leader副本A发送LeaderEpochRequest，得到的Last Offset为Epoch=1对应的Start Offset值1，因此截断Offset=1的消息M1。这样只要副本B再次发起请求同步消息M2，两副本的数据便可以保持一致。
 
 ###  副本分配策略
 
@@ -823,3 +992,76 @@ Kafka中主要有两种协调器：
 | ---------------- | ------------------------------------------------------------ |
 | fetch.max.bytes  | 默认Default: 52428800（50 m）。消费者获取服务器端一批消息最大的字节数。如果服务器端一批次的数据大于该值（50m）仍然可以拉取回来这批数据，因此，这不是一个绝对最大值。一批次的大小受message.max.bytes （broker config）or max.message.bytes （topic config）影响。 |
 | max.poll.records | 一次poll拉取数据返回消息的最大条数，默认是500条              |
+
+#### offset
+
+##### offset概念
+
+Kafka0.9版本之前，consumer默认将offset保存在Zookeeper中。从0.9版本开始，consumer默认将offset保存在Kafka一个内置的topic中，该topic为__consumer_offsets。
+
+ ![img](Kafka.assets/2591061-20221116084703852-1262197060.png)
+
+ consumer_offsets主题里面采用key和value的方式存储数据。key是group.id+topic+分区号，value就是当前offset的值。每隔一段时间，kafka内部会对这个topic进行compact，也就是每个group.id+topic+分区号就保留最新数据。
+
+在配置文件config/consumer.properties中添加配置`exclude.internal.topics=false`，默认是true，表示不能消费系统主题。为了查看该系统主题数据，所以该参数修改为false。
+
+##### offset自动提交
+
+自动提交offset的相关参数：
+
+enable.auto.commit：是否开启自动提交offset功能，默认是true，消费者会自动周期性地向服务器提交偏移量。。
+
+auto.commit.interval.ms：自动提交offset的时间间隔，默认是5s。如果设置了 enable.auto.commit 的值为true， 则该值定义了消
+费者偏移量向Kafka提交的频率，默认5s。
+
+![img](Kafka.assets/2591061-20221116085446401-943814600.png)
+
+##### offset手动提交
+
+为什么要手动提交 offset？
+
+虽然自动提交offset十分简单便利，但由于其是基于时间提交的，开发人员难以把握offset提交的时机。因此Kafka还提供了手动提交offset的API。
+
+手动提交offset的方法有两种：分别是commitSync（同步提交）和commitAsync（异步提交）：
+
+两者的相同点是，都会将本次提交的一批数据最高的偏移量提交；
+
+不同点是，<font color=red>同步提交阻塞当前线程，一直到提交成功，并且会自动失败重试（由不可控因素导致，也会出现提交失败）；而异步提交则没有失败重试机制，故有可能提交失败</font>。
+
+- commitSync（同步提交）：必须等待offset提交完毕，再去消费下一批数据。虽然同步提交offset更可靠一些，但是由于其会阻塞当前线程，直到提交成功。因此吞吐量会受到很大的影响。因此更多的情况下，会选用异步提交offset的方式。
+- commitAsync（异步提交）：发送完提交offset请求后，就开始消费下一批数据了。
+
+## 事务机制
+
+### 应用场景
+
+Kafka引入事务以实现：
+
+- 跨会话或跨分区的Exactly-Once：Producer将消息发送到多个Topic/Partition时，可以封装在一个事务中，形成一个原子操作：多条消息要么都发送成功，要么都发送失败。所谓的失败是指消息对事务型Consumer不可见，而Consumer只读取成功提交事务（Committed）的消息。
+- consume-process-produce场景的Exactly-Once：所谓consume-process-produce场景，是指Kafka Stream从若干源Topic消费数据，经处理后再发送到目标Topic中。Kafka可以将整个流程全部封装在一个事务中，并维护其原子性：要么源Topic中的数据被消费掉且处理后的结果正确写入了目标topic，要么数据完全没被处理，还能从源Topic里读取到。
+
+事务无法实现跨系统的Exactly-Once：如果数据源和目的地不只是Kafka的Topic（如各种数据库），那么操作的原子性便无法保证。
+
+### 事务应用
+
+#### 启用
+
+- 对于Producer，需将`transactional.id`参数设置为非空，并将`enable.idempotence`参数设置为`true`；
+- 对于Consumer，需将`isolation.level`参数设置为`read_committed`，即Consumer只消费已提交事务的消息。除此之外，还需要设置`enable.auto.commit`参数为`false`来让Consumer停止自动提交Offset。
+
+#### 生产者
+
+Kafka将事务状态存储在内部的topic：`__transaction_state`中，并由Transaction Coordinator组件维护。每个事务型Producer都拥有唯一标识Transaction ID，它与ProducerID相绑定。Producer重启后会向Transaction Coordinator发送请求，根据Transaction ID找到原来的ProducerID以及事务状态。
+
+另外,为了拒绝僵尸实例（Zombie Instance），每个Producer还会被分配一个递增的版本号Epoch。Kafka会检查提交事务的Proudcer的Epoch，若不为最新版本则拒绝该实例的请求。
+
+> 在分布式系统中，一个instance的宕机或失联，集群往往会自动启动一个新的实例来代替它的工作。此时若原实例恢复了，那么集群中就产生了两个具有相同职责的实例，此时前一个instance就被称为“僵尸实例（Zombie Instance）”。
+
+#### 消费者
+
+两种方案：
+
+- 读取消息 -> 更新（提交Offset -> 处理消息：若处理消息时发生故障，接管的Consumer从更新后的Offset读数据，则缺数据，类似于**At Most Once**
+- 读取消息 -> 处理消息 -> 更新（提交）Offset：若更新Offset时发生故障，接管的Consumer重新读之前的数据，数据重复，类似于**At Least Once**
+
+选取第二种方案，因为只要在消息中添加唯一主键，便可以让第二次写入的数据覆盖重复数据，从而做到**Exactly-Once**
