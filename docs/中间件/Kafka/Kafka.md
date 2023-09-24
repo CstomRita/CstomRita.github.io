@@ -55,7 +55,7 @@
 
 ##  存储结构
 
-###用什么存储消息
+### 用什么存储消息
 
 Kafka 最终会选用 logging（日志文件）+ 哈希索引的结构来存储消息。
 
@@ -72,19 +72,99 @@ Kafka采用的Append追加写日志文件的方式，是满足写入操作并发
 
 ###  Topic下存储模型
 
-
-
 ![iamge](Kafka.assets/image-20230727103215733.png)
 
-Kafka是面向主题的，分区 + 分段 + 索引三层结构
+Kafka是面向主题的，分区 + 分段 + 索引三层结构。
 
-1. 每个 Topic 被分成多个 Partition，Partition 从物理上可以理解成一个文件夹。Partition 主要是为了解决 Kafka 存储上的水平扩展问题，如果一个 Topic 的所有消息都只存在一个 Broker，这个 Broker 必然会成为瓶颈。因此，将 Topic 内的数据分成多个 Partition，然后分布到整个集群是很自然的设计方式。
+Topic是逻辑上的概念，而partition是物理上的概念，每个partition对应于一个log文件，该log文件中存储的就是Producer生产的数据。Producer生产的数据会被不断追加到该log文件末端。
 
-> parition的命名规则为topic名称+有序序号，第一个partiton序号从0开始，序号最大值为partitions数量减1
+为防止log文件过大导致数据定位效率低下，Kafka采取了分片和索引机制，将每个partition分为多个segment。每个segment包括：“.index”文件、“.log”文件和.timeindex等文件。
 
-2. 每个 Partition 又被分成了多个 Segment，Segment 从物理上可以理解成一个「数据文件 + 索引文件」。如果不引入 Segment，一个 Partition 只对应一个文件，那这个文件会一直增大，势必造成单个 Partition 文件过大，查找和维护不方便。比如，在做历史消息删除时，必然需要将文件前面的内容删除，不符合 Kafka 顺序写的思路。而在引入 Segment 后，则只需将旧的 Segment 文件删除即可，保证了每个 Segment 的顺序写。
+这些文件位于一个文件夹下，该文件夹的命名规则为：topic名称+分区序号，例如：first-0。
 
-> 日志文件的大小是Kafka **server.properties**设置的
+#### topic三层结构
+
+![img](Kafka.assets/2591061-20221114230343330-264829160.png)
+
+**topic和分区**
+
+每个 Topic 被分成多个 Partition，Partition 从物理上可以理解成一个文件夹。Partition 主要是为了解决 Kafka 存储上的水平扩展问题，如果一个 Topic 的所有消息都只存在一个 Broker，这个 Broker 必然会成为瓶颈。因此，将 Topic 内的数据分成多个 Partition，然后分布到整个集群是很自然的设计方式。
+
+parition的命名规则为topic名称+有序序号，第一个partiton序号从0开始，序号最大值为partitions数量减1。
+
+**分区和segment**
+
+每个 Partition 又被分成了多个 Segment，Segment 从物理上可以理解成一个「数据文件 + 索引文件」。如果不引入 Segment，一个 Partition 只对应一个文件，那这个文件会一直增大，势必造成单个 Partition 文件过大，查找和维护不方便。比如，在做历史消息删除时，必然需要将文件前面的内容删除，不符合 Kafka 顺序写的思路。而在引入 Segment 后，则只需将旧的 Segment 文件删除即可，保证了每个 Segment 的顺序写。
+
+日志文件的大小是Kafka **server.properties**设置的
+
+#### 定位过程
+
+<font color=red>index文件为稀疏索引，把消息将消息划分成若干个 block，只索引每个 block 第一条消息的 offset ，先根据大小关系找到对应 block，然后在 block 中顺序搜索。</font>
+
+默认块大小为4kb
+
+ ![img](Kafka.assets/2591061-20221114231743179-1206809737.png)
+
+定位过程：
+
+1. 通过目标offset定位到segment文件
+2. 在index文件中找到目标offset对应block的索引项
+3. 定位到log文件
+4. 向下遍历寻找到目标Record
+
+官网有数据表明，同样的磁盘，顺序写能到600M/s，而随机写只有100K/s。这与磁盘的机械机构有关，顺序写之所以快，是因为其省去了大量磁头寻址的时间。
+
+### 文件清理
+
+Kafka中默认的日志保存时间为7天，可以通过调整如下参数修改保存时间。
+
+```properties
+log.retention.hours，最低优先级小时，默认7天。
+log.retention.minutes，分钟。 
+log.retention.ms，最高优先级毫秒。 
+log.retention.check.interval.ms，负责设置检查周期，默认5分钟
+```
+
+Kafka中提供的日志清理策略有delete和compact两种。
+
+#### delete
+
+delete日志删除：将过期数据删除。
+
+`log.cleanup.policy = delete`所有数据启用删除策略。
+
+- 基于时间：默认打开。以segment中所有记录中的最大时间戳作为该文件时间戳。 
+- 基于大小：默认关闭。超过设置的所有日志总大小，删除最早的segment。log.retention.bytes，默认等于-1，表示无穷大。 
+
+#### compact
+
+compact日志压缩,对于相同key的不同value值，只保留最后一个版本。
+
+​	`log.cleanup.policy=compact`所有数据启用压缩策略。
+
+![img](Kafka.assets/2591061-20221114234826831-894934108.png)
+
+压缩后的offset可能是不连续的，比如上图中没有6，当从这些offset消费消息时，将会拿到比这个offset大的offset对应的消息，实际上会拿到offset为7的消息，并从这个位置开始消费。
+
+这种策略只适合特殊场景，比如消息的key是用户ID，value是用户的资料，通过这种压缩策略，整个消息集里就保存了所有用户最新的资料。
+
+### 性能
+
+#### 零拷贝
+
+Kafka的数据加工处理操作交由Kafka生产者和Kafka消费者处理。Kafka Broker应用层不关心存储的数据，所以就不用走应用层，传输效率高。
+
+![img](Kafka.assets/2591061-20221115212311764-1676882155.png)
+
+#### 页缓存
+
+Kafka重度依赖底层操作系统提供的PageCache功能。当上层有写操作时，操作系统只是将数据写入PageCache。当读操作发生时，先从PageCache中查找，如果找不到，再去磁盘中读取。
+
+实际上PageCache是把尽可能多的空闲内存都当做了磁盘缓存来使用。
+
+#### 分区+顺序写
+
 
 ## 架构模型
 
