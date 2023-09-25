@@ -99,7 +99,7 @@ parition的命名规则为topic名称+有序序号，第一个partiton序号从0
 
 #### 定位过程
 
-<font color=red>index文件为稀疏索引，把消息将消息划分成若干个 block，只索引每个 block 第一条消息的 offset ，先根据大小关系找到对应 block，然后在 block 中顺序搜索。</font>
+<font color=red>index文件为稀疏索引，将消息划分成若干个 block，只索引每个 block 第一条消息的 offset ，先根据大小关系找到对应 block，然后在 block 中顺序搜索。</font>
 
 默认块大小为4kb
 
@@ -138,7 +138,7 @@ delete日志删除：将过期数据删除。
 
 #### compact
 
-compact日志压缩,对于相同key的不同value值，只保留最后一个版本。
+compact日志压缩，对于相同key的不同value值，只保留最后一个版本。
 
 ​	`log.cleanup.policy=compact`所有数据启用压缩策略。
 
@@ -188,7 +188,7 @@ Kafka架构中的组件主要包括：
 5. Topic:可以理解为一个队列，一个 Topic 又分为一个或多个分区。
 6. Partition(分区)：是Kafka实现高吞吐的方式，一个非常大的topic可以分布到多个broker（即服务器）上，一个topic可以分为多个partition，每个partition是一个有序的队列。
 7. Offset：是消息在分区中的唯一标识，Kafka 通过它来保证消息在分区内的顺序性，不过 Offset 并不跨越分区， 也就是说，<font color=red>Kafka 保证的是分区有序性而不是主题有序性，即局部有序</font>。
-8. Replication(副本)：是 Kafka 保证数据高可用的方式，Kafka 同一Partition 的数据可以在多 Broker 上存在多 个副本，通常只有主副本对外提供读写服务，当主副本所在 Broker 崩溃或发生网络一场，Kafka 会在 Controller 的管理下会重新选择新的 Leader 副本对外提供读写服务。
+8. Replication(副本)：是 Kafka 保证数据高可用的方式，Kafka 同一Partition 的数据可以在多 Broker 上存在多 个副本，通常只有主副本对外提供读写服务，当主副本所在 Broker 崩溃或发生网络异常，Kafka 会在 Controller 的管理下会重新选择新的 Leader 副本对外提供读写服务。
 9. Leader：每个分区多个副本的“主”，生产者发送数据的对象，以及消费者消费数据的对象都是Leader。
 10. Follower：每个分区多个副本中的“从”，实时从Leader中同步数据，保持和Leader数据的同步。Leader发生故障时，某个Follower会成为新的Leader。
 11. Record：实际写入 Kafka 中并可以被读取的消息记录。每个 Record 包含了 key、value 和 timestamp。
@@ -421,13 +421,7 @@ ISR[In-Sync Replicas 副本同步队列]选举策略，从 AR 中挑选首个在
 > 修改下面的配置，可以开启UncleanLeader选举策略，默认关闭。
 > unclean.leader.election.enable=true
 
-#### 在ISR中保留的条件
-
-其实跟一个参数有关：replica.lag.time.max.ms。【副本同步最大时间】
-
-如果持续拉取速度慢于leader副本写入速度，慢于时间超过replica.lag.time.max.ms后，它就变成“非同步”副本，就会被踢出ISR副本集合中。但后面如何follower副本的速度慢慢提上来，那就又可能会重新加入ISR副本集合中了。
-
-#### 触发ISR选举的时机
+#### 副本leader选举的时机
 
 1. Leader Replica失效：当Leader Replica出现故障或失去连接时选举。
 2. Broker岩机：当LeaderReplica所在的Broker节点发生故障或者岩机时，Kafka也会触发
@@ -439,6 +433,12 @@ ISR[In-Sync Replicas 副本同步队列]选举策略，从 AR 中挑选首个在
    发LeaderReplica选举。
 6. 手动触发：通过Kafka管理工具（kafka-preferred-replica-election.sh），可以手动触发选
    举，以平衡负载或实现集群维护。
+
+#### 在ISR中保留的条件
+
+其实跟一个参数有关：replica.lag.time.max.ms。【副本同步最大时间】
+
+如果持续拉取速度慢于leader副本写入速度，慢于时间超过replica.lag.time.max.ms后，它就变成“非同步”副本，就会被踢出ISR副本集合中。但后面如何follower副本的速度慢慢提上来，那就又可能会重新加入ISR副本集合中了。
 
 ### 副本同步策略
 
