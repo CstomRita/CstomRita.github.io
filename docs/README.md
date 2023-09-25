@@ -25,3 +25,11 @@ Cst的技术栈积累
 - [ ] AES js加密配置
 - [ ] 
 
+
+
+字数统计：
+
+```shell
+ find . -regex '[^_]*.md' -exec cat {} \;|sed  '/([\u0800-\u4e00]+?|[\u4e00-\u9fa5]+?|[a-zA-Z0-9]+)/g' | wc -m
+```
+
