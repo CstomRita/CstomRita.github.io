@@ -486,7 +486,9 @@ Kafka这种使用ISR的方式则很好的均衡了确保数据不丢失以及吞
 
 ![image-20230924190958995](Kafka.assets/image-20230924190958995.png)
 
-在高水位线之下的为 已提交消息，在水位线之上的为未提交消息，对于 已提交消息，我们的消费者可以进行消费。
+在高水位线之下的为 已提交消息，在水位线之上的为未提交消息，对于已提交消息，我们的消费者可以进行消费。
+
+> 这里也可以理解为，HW之上的消息是做完同步的没有问题的消息，主副本都有的消息。
 
 需要关注的是，位移值等于高水位的消息也属于未提交消息。也就是说，高水位上的消息是不能被消费者消费的。
 
@@ -503,8 +505,8 @@ leader 副本会保存 remote LEO，表示所有 follower LEO集合。
 当leader收到请求后：
 
 1. 把消息追加到log文件，同时更新leader副本的LEO
-2. Remote LEO要等到Follower向Leader发送同步请求时，才会根据请求携带的当前Follower LEO值更新。
-3. 随后，Leader计算所有副本LEO的最小值，将其作为新的Leader HW。
+2. Follower向Leader发送同步请求时，携带的当前Follower LEO值，Leader计算所有副本LEO的最小值，将其作为新的Leader HW。
+3. Leader用新的Leader HW响应Follower副本。
 
 ###### Follow节点
 
@@ -1095,7 +1097,7 @@ Kafka0.9版本之前，consumer默认将offset保存在Zookeeper中。从0.9版�
 
 自动提交offset的相关参数：
 
-enable.auto.commit：是否开启自动提交offset功能，默认是true，消费者会自动周期性地向服务器提交偏移量。。
+enable.auto.commit：是否开启自动提交offset功能，默认是true，消费者会自动周期性地向服务器提交偏移量。
 
 auto.commit.interval.ms：自动提交offset的时间间隔，默认是5s。如果设置了 enable.auto.commit 的值为true， 则该值定义了消
 费者偏移量向Kafka提交的频率，默认5s。

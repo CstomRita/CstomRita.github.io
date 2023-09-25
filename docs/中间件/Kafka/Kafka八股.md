@@ -249,13 +249,23 @@ Kafka集群中，常见的leader副本选举策略有三种：
 
 5、手动触发，利用管理工具手动触发以实现平衡或者集群维护。
 
-### 副本间如何同步？//todo
+### 副本间如何同步？
 
+Kafka使用的是基于ISR的动态复制方案，由leader动态维护ISR副本列表，如果副本同步时间超过副本最大同步时间后，将被移除ISR集合，每次改变ISR后，Leader都会将最新的ISR持久化到Zookeeper中。
 
+生产者发送消息后，leader和follower间的同步策略，与acks参数配置有关：
 
+- acks：0，生产者发送过来的数据，不需要等数据落盘即应答。
+- acks：1，生产者发送过来的数据，Leader收到后即应答，不等待ISR副本同步。
+- acks：-1：生产者发送过来的数据，Leader和ISR队列里面的所有节点收齐数据后应答。
 
+每个 kafka 副本对象都有两个重要的属性：LEO 和 HW，leo指的是当前日志末端的位移，hw指的是已经提交可以消费的消息位移。
 
-### 在ISR保留条件？
+在同步过程中，leader收到请求后将消息追加到log文件中，同时更新leader的末端位移；follower向leader发送同步请求时会携带当前follower副本的末端位移，leader选取所有副本leo最小值作为新的leader hw，至此hw之上的消息都是副本中都存在的消息，是可以被消费的。
+
+Leader用计算出的Leader HW响应Follower副本，Follow把新消息写入log文件，更新末端位移和hw。
+
+### 什么样的副本在ISR中保留？
 
 跟一个参数有关：副本同步最大时间。
 
