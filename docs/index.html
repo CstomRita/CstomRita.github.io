@@ -62,6 +62,17 @@
         target: 'h2, h3, h4,h5,h6',
         ignoreHeaders:  ['<!-- {docsify-ignore} -->', '<!-- {docsify-ignore-all} -->']
       },
+//进度条
+ progress: {
+        position: "top",
+        color: "var(--theme-color,#42b983)",
+        height: "3px",
+    },
+//隐藏代码插件
+ hideCode: {
+        scroll: false, // Enable scrolling
+        height: 300 // Max height
+    },
     formatUpdated: '{YYYY}/{MM}/{DD} {HH}:{mm}',
     // footbar
     customPageFooter:{
@@ -135,6 +146,8 @@
   <script src="https://unpkg.com/docsify-plugin-toc@1.3.1/dist/docsify-plugin-toc.min.js"></script>
    <!-- 引入搜素插件 -->
   <script src="//cdn.jsdelivr.net/npm/docsify/lib/plugins/search.min.js"></script>
+   <!-- 代码隐藏插件 -->
+<script src="https://unpkg.com/docsify-hide-code"></script>
   <!-- 代码高亮:引入其他语言扩展 -->
  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-bash.min.js"></script>
  <script src="//cdn.jsdelivr.net/npm/prismjs@1/components/prism-c.min.js"></script>
@@ -162,6 +175,8 @@
 <script src="//unpkg.com/docsify-pagination/dist/docsify-pagination.min.js"></script>
 <!-- theme -->
 <script src="https://unpkg.com/docsify-vuepress-theme/dist/index.min.js"></script>
+<!-- 进度条-->
+<script src="https://cdn.jsdelivr.net/npm/docsify-progress@latest/dist/progress.min.js"></script>
 <!-- 访问量统计 -->
   <script async src="//busuanzi.ibruce.info/busuanzi/2.3/busuanzi.pure.mini.js"></script>
   <!-- 运行时间统计 -->
