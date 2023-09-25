@@ -332,15 +332,3 @@ Kafka中是以分区作为单元进行消费的，同一个分区使用offset偏
 >
 > - 默认的 enqueueTimeout是0，如果producer内部的队列满了，数据(messages)会被丢弃，并抛出QueueFullExceptions异常
 > - 阻塞模式的producer(queue.enqueueTimeout.ms=-1)，如果内部队列满了就会一直等待，从而有效的节制内置consumer的消费速度
-
-
-
-
-
-
-
-
-
-> https://javabetter.cn/interview/kafka-40.html#_7%E3%80%81kafka-%E4%B8%AD%E5%88%86%E5%8C%BA%E7%9A%84%E5%8E%9F%E5%88%99
-
-> https://zhuanlan.zhihu.com/p/443784983
