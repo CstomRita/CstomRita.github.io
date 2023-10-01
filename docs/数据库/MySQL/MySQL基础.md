@@ -72,13 +72,424 @@ BLOB和TEXT都是为存储很大的数据而设计的数据类型，分别采用
 
 MySQL对BLOB和TEXT列进行排序与其他类型是不同的：它只对每个列的最前max_sort_length个字节而不是整个字符串做排序。同样的，MySQL也不能将BLOB或TEXT列全部长度的字符串进行索引。
 
-## 存储过程
+## 存储过程和函数
 
+<font color=red>**存储过程是用户定义的一系列SQL语句的集合，可以指定输入参数、输出参数、返回单个或者多个的结果集，用户可通过指定存储过程的名字并给定参数(需要时)来调用执行。存储过程思想上很简单，就是数据库 SQL 语言层面的代码封装与重用。**</font>
 
+### 存储过程
 
-## 函数
+#### 基本语法
 
+##### 定义存储过程
 
+一些关键语法：
+
+1. DELIMITER xx 定义整个存储过程的结束符为xx `DELIMITER //  定义存储过程结束符号为//`
+
+   > MySQL默认以";"为分隔符，如果没有声明分割符，则编译器会把存储过程当成SQL语句进行处理，因此编译过程会报错
+   >
+   > 所以要事先用“DELIMITER //”声明当前段分隔符，让编译器把两个"//"之间的内容当做存储过程的代码，不会执行这些代码；“DELIMITER ;”的意为把分隔符还原。
+
+2. 存储过程定义整体
+
+   ```sql
+   CREATE PROCEDURE 存储过程名(定义输入输出参数) [ 存储特性 ]  
+   BEGIN 
+   		SQL语句；  
+   END 存储过程结束符 
+   ```
+
+   1. 定义参数：[IN |OUT |INOUT ]  参数名 参数数据类型
+   2. IN 表示输入参数，OUT表示输出参数，INOUT表示既可以输入也可以输出的参数。
+   3. `IN stuId INT(11)`
+   4. 存储特性：
+      1. LANGUAGE SQL：说明存储过程实体部分是由SQL语言的语句组成，这也是数据库系统默认的语言。
+      2. [NOT] DETERMINISTIC：指明存储过程的执行结果是否是确定的。DETERMINISTIC表示结果是确定的。每次执行存储过程时，相同的输入会得到相同的输出。NOT DETERMINISTIC表示结果是非确定的，相同的输入可能得到不同的输出。默认情况下，结果是非确定的。
+      3. { CONTAINS SQL | NO SQL | READS SQL DATA | MODIFIES SQL DATA }：指明子程序使用SQL语句的限制。CONTAINS SQL表示子程序包含SQL语句，但不包含读或写数据的语句；NO SQL表示子程序中不包含SQL语句；READS SQL DATA表示子程序中包含读数据的语句；MODIFIES SQL DATA表示子程序中包含写数据的语句。默认情况下，系统会指定为CONTAINS SQL。
+      4. SQL SECURITY { DEFINER | INVOKER }：指明谁有权限来执行。DEFINER表示只有定义者自己才能够执行；INVOKER表示调用者可以执行。默认情况下，系统指定的权限是DEFINER。
+      5. COMMENT 'string'：注释信息。
+
+```sql
+DELIMITER //
+ CREATE PROCEDURE myproc(OUT s int)
+  BEGIN
+   SELECT COUNT(*) INTO s FROM students;
+  END
+  //
+DELIMITER ;
+```
+
+注意的问题：
+
+1. 在存储过程中使用select语句时要紧接into，select xxx into 变量1，变量2 from....将查询结果放置到变量中
+
+2. 在存储过程中如果select结果为空，则会抛出异常 no data found
+
+   ```sql
+   BEGIN 
+   	SELECT COL1,COL2 INTO 变量1，变量2 FROM xxx
+   	EXCEPTION
+   	WHEN NO_DATA_FOUND THEN
+   	xxx;
+   END//
+   ```
+
+##### 调用存储过程
+
+调用存储过程
+
+```
+call 存储过程名(参数1，参数2，....);
+```
+
+注意：
+
+1. 用户变量名一般以@开头
+2. 传递的参数列表是存储过程定义的参数列表（包括入参、出参等等）
+3. 之后采用`select 出参数名`获取结果
+
+##### 删除存储过程
+
+```
+DROP PROCEDURE 数据库.存储过程名;
+```
+
+#####  存储过程的查看与修改
+
+查看某个数据库下的存储过程：
+
+```sql
+show procedure status where db='数据库名';
+```
+
+查看每个存储过程具体的创建语句：
+
+```
+SHOW CREATE PROCEDURE 数据库.存储过程名;
+```
+
+修改某个存储过程的定义信息：
+
+```
+ALTER PROCEDURE
+```
+
+### 函数
+
+#### 语法
+
+##### 定义存储函数
+
+```sql
+CREATE FUNCTION 函数名 (函数入参列表) RETURNS 返回值类型 [存储特性]
+BEIGIN
+	SQL语句
+END 函数结束符 
+```
+
+1. 函数入参列表 `参数名 数据类型`，因为都是入参，不需要IN
+2. SQL语句中一定有一个RETURN
+
+```sql
+DELIMITER && 
+CREATE FUNCTION name_from_employee (emp_id INT ) RETURNS VARCHAR(20) 
+BEGIN
+  RETURN (SELECT name
+  FROM employee 
+  WHERE num=emp_id ); 
+END&& 
+DELIMITER ;
+```
+
+##### 调用存储函数
+
+方式一：用在select语句
+
+```
+select 函数名（参数）
+```
+
+方式二：赋值给变量
+
+```
+set 变量 = 函数名（参数）
+```
+
+### 存储过程和函数优点
+
+存储过程和函数都是存储在数据库中的SQL集合，又用户直接或者间接调用，具有以下优点：
+
+1. 增强了SQL语言的灵活性和功能性，可以完成比较复杂的判断和运算。
+2. 可以重复使用，减少数据库开发人员的工作量。
+3. 存储过程只在创造时进行编译，以后每次执行存储过程都不需再重新编译，而一般SQL 语句每执行一次就编译一次,所以使用存储过程可提高数据库执行速度。
+4. 当对数据库进行复杂操作时(如对多个表进行Update,Insert,Query,Delete 时），可将此复杂操作用存储过程封装起来与数据库提供的事务处理结合一起使用。这些操作，如果用程序来完成，就变成了一条条的SQL语句，可能要多次连接数据库。而换成存储，只需要连接一次数据库就可以了。
+5. 可以将相关的动作一起发生，维护数据库的完整性。
+6. 降低网络通信量，不需要网络传递很多的SQL语句到达数据库服务器。
+7. 保证数据库的安全，通过SQL SECURITY可以令没有权限的用户在权限控制下间接读取数据库数据。
+
+### 存储过程和函数区别
+
+本质上，存储过程和函数没有什么区别，只是在使用下有些区别：
+
+1. 标志符不同，函数标志符为FUNCTION，存储过程标志符为PROCEDURE。
+2. 两者返回值不同：函数必须有返回值，且只能有一个；存储过程可以无或者有多个返回值。
+3. 两者调用方式不同：存储过程没有返回值类型，需要利用call函数调用作为一个独立部分执行，不能直接赋值给变量；函数有返回值类型，除了可以赋值给变量还可以直接在select子句中使用。
+4. 总体来讲，存储过程的限制相对就比较少 ，可实现的功能复杂一些。
+
+### 游标
+
+游标只能用在存储过程或者函数之中，在存储过程的SQL语句中使用游标进行循环。
+
+游标实际上是一种能从包括多条数据记录的结果集中每次提取一条记录的机制，充当指针的作用，一次只指向一行结果。
+
+    游标充当指针的作用。
+
+#### 游标的使用
+
+1. 在一个存储过程或者函数的Begin/End中使用
+
+2. 声明一个游标: declare 游标名 CURSOR for table;(这里的table可以是你查询出来的任意集合)
+
+   ```
+   declare cur cursor for select name,count from store where name = 'iphone';  
+   ```
+
+3. 打开定义的游标:open 游标名;
+
+   ```
+    open cur;  
+   ```
+
+4. 循环获取获得下一行数据:FETCH  游标名 into testrangeid,versionid;
+
+   ```sql
+   read_loop:loop  //开始循环
+   fetch cur into n,c;  
+   set total = total+c;  
+   end loop; 
+   ```
+
+5. 需要执行的语句(增删改查):这里视具体情况而定
+
+6. 释放游标:CLOSE 游标名;
+
+```sql
+CREATE PROCEDURE StatisticStore()  
+BEGIN  
+    --创建接收游标数据的变量  
+    declare c int;  
+    declare n varchar(20);  
+    --创建总数变量  
+    declare total int default 0;  
+    --创建结束标志变量  
+    declare done int default false;  
+    --创建游标  
+    declare cur cursor for select name,count from store where name = 'iphone';  
+    --指定游标循环结束时的返回值  
+    declare continue HANDLER for not found set done = true;  
+    --设置初始值  
+    set total = 0;  
+    --打开游标  
+    open cur;  
+    --开始循环游标里的数据  
+    read_loop:loop  
+    --根据游标当前指向的一条数据  
+    fetch cur into n,c;  
+    --判断游标的循环是否结束  
+    if done then  
+        leave read_loop;    --跳出游标循环  
+    end if;  
+    --获取一条数据时，将count值进行累加操作，这里可以做任意你想做的操作，  
+    set total = total + c;  
+    --结束游标循环  
+    end loop;  
+    --关闭游标  
+    close cur;  
+
+    --输出结果  
+    select total;  
+END;  
+```
+
+#### 如何知道游标到了最后
+
+```
+declare continue HANDLER for not found set done = true; 
+```
+
+在MySql中，造成游标溢出时会引发mysql预定义的NOT FOUND错误，所以在上面使用下面的代码指定了当引发not found错误时定义一个continue 的事件，指定这个事件发生时修改done变量的值。
+
+在循环时加上了下面这句代码：
+
+```sql
+--判断游标的循环是否结束  
+if done then  
+    leave read_loop;    --跳出游标循环  
+end if;  
+```
+
+#### 游标的优缺点
+
+优点：
+
+1. 游标允许定位在结果集的某个特定行
+2. 支持结果集从当前行进行数据修改
+3. 使用游标可以针对结果集的多个行执行多个不相关的操作
+
+缺点：
+
+1. 游标的缺点是针对有点而言的，也就是只能一行一行操作，在数据量大的情况下，是不适用的，**速度过慢**。
+2. 当数据量大时，使用游标会造成内存不足现象。
+
+使用场景：
+
+主要**用在循环处理、存储过程、函数中使用**，用来查询结果集的场景。
+
+## 触发器
+
+触发器（trigger）是数据库提供给程序员和数据分析员来保证数据完整性的一种方法，它是与表事件相关的特殊的存储过程，它的执行是由事件来触发，比如当对一个表进行操作（insert，delete， update）时就会激活它执行。
+
+### 语法
+
+#### 创建触发器
+
+```sql
+create trigger 触发器名 before|after 事件 on 表名 for each row 
+begin
+触发器语句;
+end 存储过程结束符 
+```
+
+1. 触发器名建议为trigger_xxx，这样便于区分，触发器名不能重复。
+2. before|after 代表触发器语句执行时间，如果是before,就是在insert delete update操作之前执行触发器语句；after就是之后。
+3. 事件就是insert delete update操作中的一个。
+4. for each row 是代表任何记录执行对应操作都会触发器。
+5. 触发器语句就是触发器触发时要执行的语句。
+6. 使用odl\new.字段名来引用数据，new是新插入的数据，old是原来的数据。
+
+```sql
+delimiter  $$ -- 一般定义成$$
+create trigger trigger_addUserTime23 before insert on user_info for each row 
+begin 
+insert into usercreatetime(create_time) values(now());
+insert into usercreatetime(create_time) values(now());
+end $$
+delimiter ;
+```
+
+####  触发器维护
+
+1. 使用`show triggers\G` 查看所有触发器
+2. 查看触发器创建语句：`show create trigger 触发器名\G;`
+3. 使用`drop trigger 触发器名;`来删除触发器
+
+### 触发器的作用
+
+1. 可维护数据库的安全性、一致性和完整性
+2. 在写入数据表之前，强制检验或者转换数据
+3. 当触发器发生错误时，异常的结果可撤销
+
+### 触发器的缺点
+
+1. 滥用会造成数据库和应用程序的维护困难
+2. 触发器是被事件被动触发的，且不能接收参数
+
+### 触发器和存储过程的不同
+
+1. 存储过程是由用户或者应用程序显式调用的，触发器是由一个事件触发自动隐式运行
+2. 存储过程可以接收返回参数，触发器不能接收参数。
+
+## 视图
+
+视图是一个虚拟的表，是从数据库的基本表中选取出的数据组成的逻辑窗口。在数据库中存放的只是视图的定义，不存放任何数据，只有在使用视图时才会执行视图的定义并从基础表中查询数据动态生成视图。
+
+### 视图的分类
+
+1. 简单视图：基于单个表所建立的视图，不包含任何函数、表达式及分组数据的视图
+
+2. 复杂视图：包含函数、表达式及分组数据的视图
+
+3. 连接视图：基于多表所建立的视图
+
+4. 只读视图：只允许执行查询操作
+
+5. 内联视图：出现在FROM的子查询，并不属于一个数据库对象
+
+   ```sql
+   FROM (SELECT product_spec_id AS tax_amount_money FROM `c` ) 
+   ```
+
+### 语法
+
+#### 定义视图
+
+定义视图可以来自当前数据库或其他数据库的一个或多个表，或者其他视图。
+
+分布式查询也可以定义使用多个异源数据的视图。
+
+定义一个视图必须拥有CREATE VIEW的系统权限，如果在其他用户中创建视图，需要由CREATE ANY VIEW的权限
+
+```sql
+CREATE [ON REPLACE] [FORCE] [ALGORITHM]={UNDEFINED|MERGE|TEMPTABLE}]
+VIEW 视图名 <属性清单>
+AS SELECT语句
+[WITH [CASCADED|LOCAL] CHECK OPTION];
+```
+
+1. 创建视图：
+   1. CREATE：创建一个视图，有同名的视图则报错
+   2. CREATE ON REPLACE：如果有同名的视图替换重构
+2. FORCE ：强制创建视图，不考虑基表是否存在，不考虑是否有基表的权限
+3. ALGORITHM有三个参数分别是：merge、TEMPTABLE、UNDEFINED
+   1. merge：处理方式替换式，可以进行更新真实表中的数据；
+   2. TEMPTABLE：临时表模式，每当查询的时候，将视图所使用的select语句生成一个结果的临时表，再在当前的临时表内进行查询。Temptable这种方式没办法更新。
+   3. UNDEFINED(没有定义ALGORITHM参数),mysql更倾向于选择替换方式，是因为它更加有效。
+4. WITH CASCADED CHECK OPTION：表示更新视图时要满足所有相关视图和表的条件
+5. WITH LOCAL CHECK OPTION：表示更新视图时满足该视图本身的定义的条件即可
+
+#### 查看视图
+
+1. 查看视图 `desc 视图名`
+
+2. 查看视图 `show table status like '视图名'`
+
+3. `show create view 视图名`
+
+4. 修改视图 `alter view 视图名`
+
+5. 删除视图 `drop view [if exists] 视图名`，只有视图所有者和具备DROP VIEW权限的用户才能删除视图，删除视图只是删除视图的定义，原有表的数据并不受影响。
+
+### 视图的优缺点
+
+优点：
+
+1. 可以允许简化结构，执行复杂查询操作。
+2. 隐藏了数据复杂性，作为外模式，提供了一定程度的逻辑独立性。
+3. 有助于限制对特定用户的数据访问，可以使用数据库视图将非敏感数据仅显示给特定用户组。
+4. 提供额外的安全性， 数据库视图允许创建只读视图，以将只读数据公开给特定用户。 
+
+缺点：
+
+1. 性能：视图的执行过程是先执行视图定义，将其结果使用临时表保存起来，这样后续对视图的操作就转化为对临时表的操作，从数据库视图查询数据可能会很慢，特别是如果视图是基于其他视图创建的。
+2. 表依赖关系：将根据数据库的基础表创建一个视图。每当更改与其相关联的表的结构时，都必须更改视图。
+
+### 使用视图时的注意点
+
+1. 普通视图执行DML语句没有限制，对视图的操作实际上是改变基表（视图定义中涉及的表）的数据。
+2. 若视图中包含GROUP BY、DISTINCT关键字，不能执行DELETE操作。
+3. 视图有以下情况时，视图中不能执行UPDATE和INSERT操作：
+   1. 视图中包含GROUP BY、DISTINCT关键字
+   2. 视图中包含由表达式定义的列
+   3. 基表中未被视图选择的列是非空的，且无默认值
+
+### 视图和表的区别
+
+1. 视图是已经编译好的SQL语句，是基于SQL语句的结果集的可视化的虚表，而表属于全局模式中的表，是实表
+2. 表是内容，视图是窗口
+3. 表占用物理空间而视图不占用物理空间，视图只是逻辑概念的存在
+4. 表可以及时对它进行修改，但视图只能用创建的语句来修改视图
+5. 视图是查看数据表的一种方法，可以查询数据表中的某些字段构成的数据，只是一些SQL语句的集合
+6. 从安全的角度讲，视图可以防止用户接触数据表，因而用户不知道表结构
 
 ## 存储引擎
 
