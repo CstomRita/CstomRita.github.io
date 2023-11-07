@@ -218,6 +218,19 @@
   }
   siteTime();
 </script>
+
+  <!-- 最新修改时间 -->
+<script language=javascript>
+ var date_url = 'https://api.github.com/repos/CstomRita/CstomRita.github.io/commits?per_page=1';
+fetch(date_url).then((response) => {
+              return response.json();
+            }).then((commits) => {
+                if (commits.length > 0) {
+                    time = tinydate('{YYYY}-{MM}-{DD} {HH}:{mm}:{ss}')(new Date(commits[0]['commit']['committer']['date']));
+                }
+             document.getElementById("updatetime").innerHTML = time;
+            });
+</script>
 <!-- 禁止复制 -->
 <script>
   // 禁止右键菜单

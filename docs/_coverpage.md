@@ -17,9 +17,7 @@ Hi，📎📎📎📎<span id="sitetime"></span>
 </span> </br>
 
 <br>
-📚本站总字数：230730 字 | 📚最近更新时间：{docsify-updated}
+📚本站总字数：230730 字 | 📚最近更新时间：<span id="updatetime"></span>
 </br>
-
- 📚最近更新时间：{docsify-updated}
 
 [Start Here](README.md)
