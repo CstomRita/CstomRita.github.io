@@ -224,6 +224,7 @@
   <!-- 最新修改时间 -->
 <script language=javascript>
  var date_url = 'https://api.github.com/repos/CstomRita/CstomRita.github.io/commits?per_page=1';
+var time = 'last-updated';
 fetch(date_url).then((response) => {
               return response.json();
             }).then((commits) => {
