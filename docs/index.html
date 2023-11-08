@@ -231,7 +231,7 @@ fetch(date_url).then((response) => {
                 if (commits.length > 0) {
                     time = tinydate('{YYYY}-{MM}-{DD} {HH}:{mm}:{ss}')(new Date(commits[0]['commit']['committer']['date']));
                 }
-             document.getElementById("updatetime").innerHTML = time;
+             document.getElementById("updatetime").innerHTML = " " +time;
             });
 </script>
 <!-- 禁止复制 -->
