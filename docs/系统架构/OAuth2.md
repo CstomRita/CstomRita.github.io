@@ -97,7 +97,7 @@ OAuth允许用户授权第三方应用访问他存储在另外服务商里的各
 
   > 服务器回应客户端的URI
   >
-  > ```perl
+  > ```bash
   > https:///server.example.com/callback?code=AUTHORIZATION_CODE&state=xyz
   > ```
   >
@@ -109,7 +109,7 @@ OAuth允许用户授权第三方应用访问他存储在另外服务商里的各
 
   > 客户端向认证服务器申请令牌的HTTP请求：
   >
-  > ```ini
+  > ```bash
   > https://server.example.com/oauth/token?client_id=CLIENT_ID&client_secret=CLIENT_SECRET&grant_type=authorization_code&code=AUTHORIZATION_CODE&redirect_uri=CALLBACK_URL
   > ```
   >
@@ -201,7 +201,7 @@ OAuth允许用户授权第三方应用访问他存储在另外服务商里的各
 
   > 客户端发出的HTTP请求
   >
-  > ```ini
+  > ```bash
   > https://oauth.example.com/token?grant_type=password&username=USERNAME&password=PASSWORD&client_id=CLIENT_ID
   > ```
   >
@@ -238,7 +238,7 @@ OAuth允许用户授权第三方应用访问他存储在另外服务商里的各
 
   > 客户端发出的HTTP请求
   >
-  > ```ini
+  > ```bash
   > https://oauth.example.com/token?grant_type=client_credentials&client_id=CLIENT_ID&client_secret=CLIENT_SECRET
   > ```
   >
@@ -294,13 +294,11 @@ access_token刷新机制 access_token 是调用授权关系接口的调用凭证
 - 若access_token未超时，那么进行refresh_token不会改变access_token，但超时时间会刷新，相当于续期access_token
    refresh_token 拥有较长的有效期（30 天），当 refresh_token 失效的后，需要用户重新授权
 
-
-
 ### 令牌的使用
 
 客户端拿到访问令牌后就可以通过web API向服务提供商的资源服务器请求资源了。 此时，每个发到 API 的请求，都必须带有令牌。具体做法是在请求的头信息，加上一个`Authorization`字段，令牌就放在这个字段里面。
 
-```arduino
+```bash
 curl -H "Authorization: Bearer ACCESS_TOKEN" \
 "https://api.example.com"
 ```
