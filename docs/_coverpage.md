@@ -5,6 +5,8 @@
 >
 >*Only practice makes perfect !* 
 
+![img](_coverpage.assets/7F198CDA.gif)
+
 
 Hi，📎📎📎📎<span id="sitetime"></span>
 
@@ -17,7 +19,8 @@ Hi，📎📎📎📎<span id="sitetime"></span>
 </span> </br>
 
 <br>
-📚本站总字数：230730 字 | 📚最近更新时间：<span id="updatetime"></span>
+📚本站总字数：418136字 |🎈最近更新时间：<span id="updatetime"></span>
 </br>
 
 [Start Here](README.md)
+
