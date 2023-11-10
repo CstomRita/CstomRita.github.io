@@ -188,7 +188,13 @@ public interface PlatformTransactionManager {
 
 #### 隔离级别
 
+定义了五种隔离级别：
 
+- **`TransactionDefinition.ISOLATION_DEFAULT`** :使用后端数据库默认的隔离级别，MySQL 默认采用的 `REPEATABLE_READ` 隔离级别 Oracle 默认采用的 `READ_COMMITTED` 隔离级别。
+- **`TransactionDefinition.ISOLATION_READ_UNCOMMITTED`** :最低的隔离级别，使用这个隔离级别很少，因为它允许读取尚未提交的数据变更，**可能会导致脏读、幻读或不可重复读**
+- **`TransactionDefinition.ISOLATION_READ_COMMITTED`** : 允许读取并发事务已经提交的数据，**可以阻止脏读，但是幻读或不可重复读仍有可能发生**
+- **`TransactionDefinition.ISOLATION_REPEATABLE_READ`** : 对同一字段的多次读取结果都是一致的，除非数据是被本身事务自己所修改，**可以阻止脏读和不可重复读，但幻读仍有可能发生。**
+- **`TransactionDefinition.ISOLATION_SERIALIZABLE`** : 最高的隔离级别，完全服从 ACID 的隔离级别。所有的事务依次逐个执行，这样事务之间就完全不可能产生干扰，也就是说，**该级别可以防止脏读、不可重复读以及幻读**。但是这将严重影响程序的性能。通常情况下也不会用到该级别。
 
 #### 传播行为
 
@@ -200,7 +206,7 @@ public interface PlatformTransactionManager {
 
 在Spring中，枚举类配置了7种传播行为：
 
-![image-20231110102106630](Spring%E4%BA%8B%E5%8A%A1.assets/image-20231110102106630.png)
+![传播行为](Spring%E4%BA%8B%E5%8A%A1.assets/640)
 
 ##### REQUIRED
 
@@ -215,9 +221,14 @@ public interface PlatformTransactionManager {
 
 > 上面的`aMethod()`和`bMethod()`使用的都是`PROPAGATION_REQUIRED`传播行为的话，两者使用的就是同一个事务，只要其中一个方法回滚，整个事务均回滚。
 
-##### SUPPORTS
+##### NESTED
 
-##### MANDATORY
+**`TransactionDefinition.PROPAGATION_NESTED`**
+
+如果当前存在事务，就在嵌套事务内执行；如果当前没有事务，就执行与`TransactionDefinition.PROPAGATION_REQUIRED`类似的操作。也就是说：
+
+- 在外部方法开启事务的情况下，在内部开启一个新的事务，作为嵌套事务存在。
+- 如果外部方法无事务，则单独开启一个事务，与 `PROPAGATION_REQUIRED` 类似。
 
 ##### REQUIRES_NEW
 
@@ -230,36 +241,191 @@ public interface PlatformTransactionManager {
 > - 如果`aMethod()`发生异常回滚，`bMethod()`不会跟着回滚，因为 `bMethod()`开启了独立的事务。
 > - 但是，如果 `bMethod()`抛出了未被捕获的异常并且这个异常满足事务回滚规则的话,`aMethod()`同样也会回滚，因为这个异常被 `aMethod()`的事务管理机制检测到了。
 
+##### SUPPORTS
+
+**`TransactionDefinition.PROPAGATION_SUPPORTS`**
+
+ 如果当前存在事务，则加入该事务；如果当前没有事务，则以非事务的方式继续运行。
+
+这个使用的很少。
+
+##### MANDATORY
+
+**`TransactionDefinition.PROPAGATION_MANDATORY`**
+
+如果当前存在事务，则加入该事务；如果当前没有事务，则抛出异常。（mandatory：强制性）
+
+这个使用的很少。
+
 ##### NOT_SUPPORTED
+
+**`TransactionDefinition.PROPAGATION_NOT_SUPPORTED`**:
+
+以非事务方式运行，如果当前存在事务，则把当前事务挂起。
+
+这个使用很少。
 
 ##### NEVER
 
-##### NESTED
+**`TransactionDefinition.PROPAGATION_NEVER`**
 
-**`TransactionDefinition.PROPAGATION_NESTED`**
+以非事务方式运行，如果当前存在事务，则抛出异常。
 
-如果当前存在事务，就在嵌套事务内执行；如果当前没有事务，就执行与`TransactionDefinition.PROPAGATION_REQUIRED`类似的操作。也就是说：
-
-- 在外部方法开启事务的情况下，在内部开启一个新的事务，作为嵌套事务存在。
-- 如果外部方法无事务，则单独开启一个事务，与 `PROPAGATION_REQUIRED` 类似。
-
-
-
-
-
-
+这个使用很少。
 
 #### 回滚规则
 
+回滚规则定义了哪些异常会导致事务回滚而哪些不会。
 
+默认情况下，事务只有遇到运行期异常（`RuntimeException` 的子类）时才会回滚，`Error` 也会导致事务回滚，但是，在遇到检查型（Checked）异常时不会回滚。
+
+想要回滚特定的异常类型的话，可以这样：
+
+```java
+@Transactional(rollbackFor= MyException.class)
+```
 
 #### 是否只读
 
+对于只有读取数据查询的事务，可以指定事务类型为 readonly，即只读事务。
 
+只读事务不涉及数据的修改，数据库会提供一些优化手段，适合用在有多条数据库查询操作的方法中。
+
+> [!Note] 关于只读事务：
+>
+> - 如果一次执行单条查询语句，则没有必要启用事务支持，数据库默认支持 SQL 执行期间的读一致性；
+> - 如果一次执行多条查询语句，例如统计查询，报表查询，在这种场景下，多条查询 SQL 必须保证整体的读一致性，否则，在前条 SQL 查询之后，后条 SQL 查询之前，数据被其他用户改变，则该次整体的统计查询将会出现读数据不一致的状态，此时，应该启用事务支持。
 
 #### 事务超时
 
+事务超时，就是指一个事务所允许执行的最长时间，如果超过该时间限制但事务还没有完成，则自动回滚事务。
 
+在 `TransactionDefinition` 中以 int 的值来表示超时时间，其单位是秒，默认值为-1，这表示事务的超时时间取决于底层事务系统或者没有超时时间。
 
+### TransactionStatus
 
+`TransactionStatus`接口用来记录事务的状态 该接口定义了一组方法,用来获取或判断事务的相应状态信息。
 
+`PlatformTransactionManager.getTransaction(…)`方法返回一个 `TransactionStatus` 对象。
+
+**TransactionStatus 接口内容如下：**
+
+```java
+public interface TransactionStatus{
+    boolean isNewTransaction(); // 是否是新的事务
+    boolean hasSavepoint(); // 是否有恢复点
+    void setRollbackOnly();  // 设置为只回滚
+    boolean isRollbackOnly(); // 是否为只回滚
+    boolean isCompleted; // 是否已完成
+}
+```
+
+## 原理
+
+### JDBC封装
+
+Spring事务是对数据库事务的进⼀步封装。
+
+使用JDBC开启事务的步骤：
+
+```java
+// 第⼀步：加载JDBC驱动，代码如下
+Class.forName("com.mysql.jdbc.Driver");
+
+// 第⼆步：建⽴与数据库的连接，后两个参数分别为账号和密码，代码如下。
+Connection conn = DriverManager.getConnection(url, "root", "root");
+
+// 第三步：开启事务，代码如下
+conn.setAutoCommit(true/false);
+
+// 第四步：执⾏数据库的CRUD操作，代码如下
+PreparedStatement ps = con.prepareStatement(sql);
+
+// 新增、修改、删除
+ps.executeUpdate();
+
+// 查询
+ps.executeQuery()
+
+// 第五步：提交或者回滚事务，代码如下
+conn.commit();
+conn.rollback();
+
+// 第六步：关闭连接，代码如下。
+ps.close();
+conn.close();
+```
+
+如果使⽤Spring的事务功能，则不必⼿动开启事务、提交事务和回滚事务，也就是不⽤再写第三步和第五步中的代码，开启事务、提交事务和回滚事务的操作全部交由 Spring框架⾃动完成。
+
+```java
+@Transactional
+    public void declarativeUpdate() {
+        updateOperation1();
+        updateOperation2();
+    }
+```
+
+Spring中的事务依然是依托于底层数据库的，依然是对JDBC代码的封装，具体行为交于数据库系统实现事务特性。
+
+以上的写法相当于：在进入`declarativeUpdate()`方法前，使用`BEGIN`开启了事务，在执行完方法后，使用`COMMIT`提交事务。
+
+### @Transactional
+
+#### 基于AOP实现
+
+Spring框架在启动的时候会创建相关的bean实例对象，并且会扫描标注有相关注解的类和方法，为这些⽅法⽣成代理对象。
+
+如果扫描到标注有@Transactional注解的类或者⽅法时，会根据@Transactional注解的相关参数进⾏配置注⼊，在代理对象中会处理相应的事务，对事务进行管理。例如在代理对象中开启事务、提交事务和回滚事务。⽽这些操作都是Spring框架通过 AOP代理⾃动完成的，⽆须开发⼈员过多关⼼其中的细节。
+
+如果一个类或者一个类中的 public 方法上被标注`@Transactional` 注解的话，Spring 容器就会在启动的时候为其创建一个代理类，在调用被`@Transactional` 注解的 public 方法的时候，实际调用的是，`TransactionInterceptor` 类中的 `invoke()`方法。这个方法的作用就是在目标方法之前开启事务，方法执行过程中如果遇到异常的时候回滚事务，方法调用完成之后提交事务。
+
+#### 自调用问题
+
+当一个方法被标记了`@Transactional` 注解的时候，Spring 事务管理器只会在被其他类方法调用的时候生效，而不会在一个类中方法调用生效。
+
+这是因为 Spring AOP 工作原理决定的。因为 Spring AOP 使用动态代理来实现事务的管理，它会在运行的时候为带有 `@Transactional` 注解的方法生成代理对象，并在方法调用的前后应用事物逻辑。如果该方法被其他类调用我们的代理对象就会拦截方法调用并处理事务。但是在一个类中的其他方法内部调用的时候，我们代理对象就无法拦截到这个内部调用，因此事务也就失效了。
+
+严格上来说,只要对方法A使用注解AOP均会失效，原因是因为这里的this.调用的并不是Spring的代理对象。
+
+```java
+@Service
+public class ClassA{
+ 
+        @Transactional(propagation = Propagation.REQUIRES_NEW)
+        public void methodA(){
+ 
+        }
+ 
+        /**
+         * 这里调用methodA() 的事务将会失效
+         */
+        public void methodB(){
+            this.methodA();
+        }
+ 
+    }
+```
+
+**解决方法一：getBean获取代理对象**
+
+```java
+
+        public void methodB(){
+　　　　　　　　//使用getBean
+　　　　((BaseClass)SpringUtil.getBean("classA")).methodA();
+        }
+```
+
+**解决方法二：注入自己的bean**
+
+直接在当前类@Autowire 或者@Resource注入自己，然后用注入的bean 调用方法。
+
+#### 失效情况
+
+- 底层使用的数据库必须支持事务机制，否则不生效；
+
+- `@Transactional` 注解只有作用到 public 方法上事务才生效，不推荐在接口上使用；
+- 避免同一个类中调用 `@Transactional` 注解的方法，这样会导致事务失效；
+- 被 `@Transactional` 注解的方法所在的类必须被 Spring 管理，否则不生效；
+- 正确的设置 `@Transactional` 的 `rollbackFor` 和 `propagation` 属性，否则事务可能会回滚失败;
