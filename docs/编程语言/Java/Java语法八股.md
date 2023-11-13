@@ -252,5 +252,41 @@ HashSet 底层就是基于 HashMap 实现的，将添加的元素作为key，new
 
 针对Set类型，线程安全的类有：CopyOnWriteArraySet、Collections.synchronizedSet包装 set。
 
+## 多线程
+
+### 如何知道一个线程状态/任务是否已经执行完成？
+
+1、在线程池内部，当一个任务丢给线程池去执行，线程池会调度工作线程来执行这个任务的run方法，run方法正常结束，也就意味着任务完成了。通过等待run方法返回，可以去统计任务的完成数量。
+
+2、在线程池外部获得线程池内部任务的执行状态，有几种方法可以实现：
+
+- isTerminated()方法，可以判断线程池的运行状态，可以调用isTerminated()方法了解线程池的运行状态，一旦线程池的运行状态是Terminated，意味着线程池中的所有任务都已经执行完了。想要通过这个方法获取状态的前提是，程序中主动调用了线程池的shutdown()方法。在实际业务中，一般不会主动去关闭线程池，因此这个方法在实用性和灵活性方面都不是很好。
+
+- 在线程池中，有一个submit()方法，它提供了一个Future的返回值，我们通过Future.get()方法来获得任务的执行结果，当线程池中的任务没执行完之前，future.get()方法会一直阻塞，直到任务执行结束。因此，只要future.get()方法正常返回，也就意味着传入到线程池中的任务已经执行完成了。
+
+- 可以引入一个CountDownLatch计数器，定义一个CountDownLatch对象并且计数器为1，接着在线程池代码块后面调用await()方法阻塞主线程，然后，当传入到线程池中的任务执行完成后，调用countDown()方法表示任务执行结束，计数器归零0，唤醒阻塞在await()方法的线程。
+
+  ```java
+  public static void main(String[] args) throws InterruptedException {
+  	ExecutorService executorService= Executors.newFixedThreadPool(10); 		CountDownLatch countDownLatch=new CountDownLatch(1);		
+      executorService.execute(new Runnable(){
+          @Override
+          public void run() {
+              //开始执行任务 try {
+              Thread.sleep(3000);//模拟任务执行时间
+              countDownLatch.countDown();//任务执行结束后，计数器减1} catch
+              (InterruptedException e){
+                  e.printStackTrace();
+              }});
+          //阻塞main线程|当任务执行结束调用countDown()方法使得计数器归零后，唤醒主线程。 
+          countDownLatch.await();
+          executorService.shutdown( );
+      }
+  ```
+
+  
+
+
+
 
 
