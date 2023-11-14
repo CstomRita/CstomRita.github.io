@@ -2,7 +2,7 @@
 
 <p align="right">update time : {docsify-updated}</p>
 
-## 基础语法篇
+## 基础
 
 ### 深拷贝和浅拷贝的区别？
 
@@ -91,202 +91,100 @@ Java 反射机制是指在程序的运行过程中，可以构造任意一个类
 - Method 类：获取类的方法信息
 - Construct 类：获取类的构造方法等等信息
 
-## 集合篇
+## Object
 
-### Java中的集合有哪些？
+###  `== `和 `equals()` 的区别
 
-Java集合大致可以分为Set、List、Queue和Map四种体系。
+**`==`** 对于基本类型和引用类型的作用效果是不同的：
 
-其中，List、Set、Queue的父接口都是Collection，List代表有序、重复的集合；Set代表无序、不可重复的集合；Java 5 又增加了Queue体系集合，代表一种队列集合。
+- 对于基本数据类型来说，`==` 比较的是值。
+- 对于引用数据类型来说，`==` 比较的是对象的内存地址。
 
-Map是另外的接口，是键值对映射结构的集合。
+`equals()` 用来判断两个对象是否相等，存在两种使用情况：
 
-### ArrayList如何扩容？
+- 类没有重写 `equals()`方法：通过`equals()`比较该类的两个对象时，等价于通过“==”比较这两个对象，使用的默认是 `Object`类`equals()`方法。
+- 类重写了 `equals()`方法：一般我们都重写 `equals()`方法来比较两个对象中的属性是否相等；若它们的属性相等，则返回 true(即，认为这两个对象相等)。
 
-ArrayList是基于数组的集合，数组的容量是在定义的时候确定的，如果数组满了，再插入，就会数组溢出。所以在插入时候，会先检查是否需要扩容，如果当前容量+1超过数组长度，就会进行扩容。
+### hashcode的作用
 
-ArrayList的扩容是创建一个**1.5倍**的新数组，然后把原数组的值拷贝过去。
+`hashCode()` 的作用是获取哈希码（`int` 整数），也称为散列码。哈希码的作用是确定该对象在哈希表中的索引位置。
 
-### ArrayList和LinkedList的区别？
+ `hashCode()` 和 `equals()`都是用于比较两个对象是否相等，但在一些容器（比如 `HashMap`、`HashSet`）中，有了 `hashCode()`方法 之后，判断元素是否在对应容器中的效率会更高。
 
-1. 数据结构不同：ArrayList基于数组实现；LinkedList基于双向链表实现
-2. 是否支持随机访问不同：ArrayList基于数组可以根据下标查找，支持随机访问；LinkedList基于链表，所以它没法根据序号直接获取元素，不支持随机访问。
-3. 查找时间复杂度不同：ArrayList基于数组实现，get(int index)可以直接通过数组下标获取，时间复杂度是O(1)；LinkedList基于链表实现，get(int index)需要遍历链表，时间复杂度是O(n)；当然，get(E element)这种查找，两种集合都需要遍历，时间复杂度都是O(n)。
-4. 增删复杂度不同：ArrayList增删如果是数组末尾的位置，直接插入或者删除就可以了，但是如果插入中间的位置，就需要把插入位置后的元素都向前或者向后移动，甚至还有可能触发扩容；双向链表的插入和删除只需要改变前驱节点、后继节点和插入节点的指向就行了，不需要移动元素。所以，多数情况下，ArrayList更利于查找，LinkedList因为移动的平均步长短更利于增删。
-5. 内存占用不同：ArrayList基于数组，是一块连续的内存空间，LinkedList基于链表，内存空间不连续，它们在空间占用上都有一些额外的消耗：ArrayList是预先定义好的数组，可能会有空的内存空间，存在一定空间浪费；LinkedList每个节点，需要存储前驱和后继，所以每个节点会占用更多的空间。
+### hashcode和equals方法
 
-### 快速失败和安全失败机制，采用这些机制的集合有哪些？
+ `hashCode()` 和 `equals()`都是用于比较两个对象是否相等，但在一些容器（比如 `HashMap`、`HashSet`）中，有了 `hashCode()`方法 之后，判断元素是否在对应容器中的效率会更高，同样的 `hashCode` 有多个对象，它会继续使用 `equals()` 来判断是否真的相同。
 
-**1、快速失败（fail—fast）**：快速失败是Java集合的一种错误检测机制，用于用迭代器遍历一个集合对象时，如果线程A遍历过程中，线程B对集合对象的内容进行了修改（增加、删除、修改），则会抛出Concurrent Modification Exception。
+由于哈希碰撞，两个对象的`hashCode` 值相等并不代表两个对象就相等。
 
-java.util包下的集合类都是快速失败的，不能在多线程下发生并发修改（迭代过程中被修改），比如ArrayList 类
+总结下来就是：
 
-实现的原理为：迭代器在遍历时直接访问集合中的内容，并且在遍历过程中使用一个 `modCount` 变量。集合在被遍历期间如果内容发生变化，就会改变`modCount`的值。每当迭代器使用hashNext()/next()遍历下一个元素之前，都会检测modCount变量是否为expectedmodCount值，是的话就返回遍历；否则抛出异常，终止遍历。
+- 如果两个对象的`hashCode` 值相等，那这两个对象不一定相等（哈希碰撞）。
+- 如果两个对象的`hashCode` 值相等并且`equals()`方法也返回 `true`，我们才认为这两个对象相等。
+- 如果两个对象的`hashCode` 值不相等，我们就可以直接认为这两个对象不相等。
 
-> 这里异常的抛出条件是检测到 modCount！=expectedmodCount 这个条件。如果集合发生变化时修改modCount值时，刚好又设置为了expectedmodCount值，则异常不会抛出。因此，不能依赖于这个异常是否抛出而进行并发操作的编程，这个异常只建议用于检测并发修改的bug。
+### 重写equals方法时必须重写hashcode方法吗？
 
-**2、安全失败（fail—safe）**：采用安全失败机制的集合容器，在遍历时不是直接在集合内容上访问的，而是先复制原有集合内容，在拷贝的集合上进行遍历。
+重写 equals() 时必须重写 hashCode() 方法。
 
-java.util.concurrent包下的容器都是安全失败，可以在多线程下并发使用，并发修改，比如CopyOnWriteArrayList类。
+因为两个相等的对象的 `hashCode` 值必须是相等。也就是说如果 `equals` 方法判断两个对象是相等的，那这两个对象的 `hashCode` 值也要相等。
 
-安全失败的实现原理原理：由于迭代时是对原集合的拷贝进行遍历，所以在遍历过程中对原集合所作的修改并不能被迭代器检测到，所以不会触发Concurrent Modification Exception。基于拷贝内容的优点是避免了Concurrent Modification Exception，但同样地，迭代器并不能访问到修改后的内容，即：迭代器遍历的是开始遍历那一刻拿到的集合拷贝，在遍历期间原集合发生的修改迭代器是不知道的。
+如果重写 `equals()` 时没有重写 `hashCode()` 方法的话就可能会导致 `equals` 方法判断是相等的两个对象，`hashCode` 值却不相等。
 
-### ArrayList如何序列化？
+### hashcode返回一个常量会有什么问题？
 
-ArrayList底层使用`transient`修饰存储元素的`elementData`的数组，这样的作用是让被修饰的成员属性不被序列化，这样是出于效率的考虑，数组可能长度100，但实际只用了50，剩下的50不用其实不用序列化，这样可以提高序列化和反序列化的效率，还可以节省内存空间。
+当hashCode()返回常量时，所有对象都出现hash冲突，用哈希作key的时候效率会极度变低。
 
-ArrayList通过两个方法**readObject、writeObject**自定义序列化和反序列化策略，实际直接使用两个流`ObjectOutputStream`和`ObjectInputStream`来进行序列化和反序列化。
+## String类
 
-### 如何实现线程安全的ArrayList？
+### String、StringBuffer、StringBuilder 的区别？
 
-保证ArrayList的线程安全可以通过这些方案：
+- 可变性上，`String` 是不可变的；StringBuffer和StringBuilder是可变的。
+- 线程安全性上，`String` 中的对象是不可变的，也就可以理解为常量，线程安全；`StringBuffer` 对方法加了同步锁或者对调用的方法加了同步锁，所以是线程安全的。`StringBuilder` 并没有对方法进行加同步锁，所以是非线程安全的。
+- 性能上，`String` 类型进行改变的时候，都会生成一个新的 `String` 对象，然后将指针指向新的 `String` 对象，性能较差；StringBuilder和StringBuffer对对象本身进行操作，比String性能高，由于StringBuffer线程安全，比StringBuilder性能高一点。
 
-- 使用Vector，Vector的线程安全实现方式是对所有读写操作方法都加上了synchronized关键字。
-- 使用 CopyOnWriteArrayList 代替 ArrayList。
-- 在使用 ArrayList 时，应用程序通过同步机制去控制 ArrayList 的读写。
-- 使用 Collections.synchronizedList 包装 ArrayList，然后操作包装后的 list。
+### String 为什么是不可变的?
 
-### 说一下CopyOnWriteArrayList？
+1. 保存字符串的数组被 `final` 修饰且为私有的，并且`String` 类没有提供/暴露修改这个字符串的方法。
+2. `String` 类被 `final` 修饰导致其不能被继承，进而避免了子类破坏 `String` 不可变。
 
-CopyOnWriteArrayList，核心是写时复制，是线程安全版本的ArrayList。
+> 被 `final` 关键字修饰的类不能被继承，修饰的方法不能被重写，修饰的变量是基本数据类型则值不能改变，修饰的变量是引用类型则不能再指向其他对象
 
-CopyOnWriteArrayList采用了一种读写分离的并发策略。读操作是无锁的，写操作时拷贝一个副本，并在副本上加锁，在新副本上执行写操作，结束之后再将原容器的引用指向新容器。
+### 字符串常量池的作用？
 
-### synchronizedList和vector的区别？
+字符串常量池 是 JVM 为了提升性能和减少内存消耗针对字符串（String 类）专门开辟的一块区域，主要目的是为了避免字符串的重复创建。
 
-这两者都是线程安全的，但在实现方式上有区别：
+### String s1 = new String("abc")创建了几个字符串对象？
 
-- 应用定位不同：Vector是线程安全的List，定位是一个基础的集合结构，底层是数组实现，使用Vector必须要转成Vector的数组结构；SynchronizedList的定位是一个包装类，可以包装所有List的子类，即可以实现同步，完全不会修改底层数据结构。
-- 锁机制不同：Vector对读写操作都加了锁，而SynchronizedList仅对写操作加锁，如果要线程安全地遍历，必须要在外面再加一层锁。
-- 锁对象不同：Vector使用的同步方法，锁定的是this对象；而SynchronizedList使用的同步代码块，锁对象默认是this对象，也可以是构造器传入的Object对象。
-- 扩容机制不同：Vector可以指定扩容大小，默认扩容到原来的 2 倍；SynchronizedList采用ArrayList的扩容，只能扩容到 1.5 倍，没有办法自定义扩容大小。
+会创建 1 或 2 个字符串对象。
 
-### HashMap的数据结构？
+- 如果字符串常量池中不存在字符串对象“abc”的引用，那么它将首先在字符串常量池中创建，然后在堆空间中创建，因此将创建总共 2 个字符串对象。
+- 如果字符串常量池中已存在字符串对象“abc”的引用，则只会在堆中创建 1 个字符串对象“abc”。
 
-在jdk1.7中，使用数组+链表的方式实现，其实就是一个存储链表的数组，底层实现还是数组，只是每个数组存放的是一个单向链表。数据元素通过映射关系，也就是散列函数，映射到桶数组对应索引的位置，如果发生冲突，从冲突的位置拉一个链表，插入冲突的元素。
+> [!ATTENTION] 注意常量池的对象和堆中的对象是两个对象。
 
-在jdk1.8中，使用数组+链表+红黑树的方式实现，因为链表的查询时间是O(n)，当冲突很严重，一个索引上的链表非常长，效率就很低了，所以在1.8版本的时候做了优化，当一个链表的长度超过8的时候就转换数据结构，不再使用链表存储，而是使用红黑树，红黑树是一种平衡的二叉树，插入、删除、查找的最坏时间复杂度都为 O(logn)，提高了查找效率。
+### intern 方法有什么作用?
 
-### HashMap如何扩容？
+`String.intern()` 是一个 native（本地）方法，其作用是将指定的字符串对象的引用保存在字符串常量池中，可以简单分为两种情况：
 
-HashMap 的数组的初始容量是 16，扩容因子为 0.75，每次采用 2 倍的扩容。
+- 如果字符串常量池中保存了对应的字符串对象的引用，就直接返回该引用。
+- 如果字符串常量池中没有保存了对应的字符串对象的引用，那就在常量池中创建一个指向该字符串对象的引用并返回。
 
-当数组中的存储容量达到 75%的时候，就需要对数组容量进行 2 倍的扩容。
-
-随着数据的插入数量增加以及负载因子的作用下，就需要扩容来存放更多的数据。
-
-在jdk1.8中，采用的思想是，扩容后，元素要么在原位置，要么在原位置再移动2的次幂。因此，可以采用更简单的判断逻辑，不需要重新通过哈希函数计算位置， 观察原先的哈希值，在扩容后数组长度n-1新增的bit位上，对应的二进制是0还是1：
-
-- 0：元素下标位置不变
-- 1：元素下标位置 = 原下标位置 + 未扩容前数组大小
-
-### HashMap的容量一直是2的倍数，为什么？
-
-第一个原因是为了方便哈希取余，将元素放在数组中，是用hash值和数组大小取余定位位置的，而HashMap是用哈希值和(数组大小-1)做与操作可实现同样的效果，而且位运算效率更高。
-
-第二个方面是在扩容时，扩容后的大小也是2的倍数，将已经产生hash碰撞的元素完美的转移到新的table中。
-
-### jdk1.7和jdk1.8在hashmap中有什么不同？
-
-1. 数据结构：数组 + 链表改成了数组 + 链表或红黑树
-
-   `原因`：发生 hash 冲突，元素会存入链表，链表过长转为红黑树，将时间复杂度由`O(n)`降为`O(logn)`
-
-2. 链表插入方式：链表的插入方式从头插法改成了尾插法
-
-   简单说就是插入时，如果数组位置上已经有元素，1.7 将新元素放到数组中，原始节点作为新节点的后继节点，1.8 遍历链表，将元素放置到链表的最后。
-
-   `原因`：因为 1.7 头插法扩容时，头插法会使链表发生反转，多线程环境下会产生环。
-
-3. 扩容：扩容的时候 1.7 需要对原数组中的元素进行重新 hash 定位在新数组的位置，1.8 采用更简单的判断逻辑，不需要重新通过哈希函数计算位置，新的位置不变或索引 + 新增容量大小。
-
-   `原因：`提高扩容的效率，更快地扩容。
-
-4. 扩容时机：在插入时，1.7 先判断是否需要扩容，再插入，1.8 先进行插入，插入完成再判断是否需要扩容。
-
-### HashMap 是线程安全的吗？多线程下会有什么问题？
-
-HashMap不是线程安全的，可能会发生这些问题：
-
-- 多线程下扩容死循环。JDK1.7 中的 HashMap 使用头插法插入元素，在多线程的环境下，扩容的时候有可能导致环形链表的出现，形成死循环。因此，JDK1.8 使用尾插法插入元素，在扩容时会保持链表元素原本的顺序，不会出现环形链表的问题。
-- 多线程的 put 可能导致元素的丢失。多线程同时执行 put 操作，如果计算出来的索引位置是相同的，那会造成前一个 key 被后一个 key 覆盖，从而导致元素的丢失。此问题在 JDK 1.7 和 JDK 1.8 中都存在。
-- put 和 get 并发时，可能导致 get 为 null。线程 1 执行 put 时，因为元素个数超出 threshold 而导致 rehash，线程 2 此时执行 get，有可能导致这个问题。这个问题在 JDK 1.7 和 JDK 1.8 中都存在。
-
-### 如何解决HashMap线程不安全的问题呢？
-
-Java 中有 HashTable、Collections.synchronizedMap、以及 ConcurrentHashMap 可以实现线程安全的 Map。
-
-- HashTable 是直接在操作方法上加 synchronized 关键字，锁住整个table数组，粒度比较大；
-- Collections.synchronizedMap 包装封装map，内部定义了一个对象锁，方法内通过对象锁实现；
-- ConcurrentHashMap 在jdk1.7中使用分段锁，在jdk1.8中使用CAS+synchronized。
-
-### ConcurrentHashMap的实现原理？
-
-1.7版本的ConcurrentHashMap采用分段锁机制，里面包含一个Segment数组，使用锁机制控制并发，锁住segment数组。相当于每个Segment都是一个HashMap，默认的Segment长度是16，也就是支持16个线程的并发写，Segment之间相互不会受到影响。
-
-1.8实现线程安全不是在数据结构上下功夫，它的数据结构和HashMap是一样的，它实现线程安全的关键点在于put流程，使用了CAS和synchronized实现：当位置为空时，表示没有哈希冲突，可以写入数据，使用CAS原子操作写入数据；如果出现了哈希冲突，则加synchronized锁保证线程安全。
-
-### 有序的Map有哪些？
-
-HashMap是无序的，根据 hash 值随机插入。
-
-如果想使用有序的Map，可以使用LinkedHashMap 或者 TreeMap。
-
-### LinkedHashMap 怎么实现有序的？
-
-LinkedHashMap维护了一个双向链表，有头尾节点。同时 LinkedHashMap 节点 Entry 内部除了继承 HashMap 的 Node 属性，还有 before 和 after 用于标识前置节点和后置节点，可以实现按插入的顺序或访问顺序排序。
-
-### TreeMap 怎么实现有序的？
-
-TreeMap 是按照 Key 的自然顺序或者 Comprator 的顺序进行排序，内部是通过红黑树来排序实现。要么 key 所属的类实现 Comparable 接口，或者自定义一个实现了 Comparator 接口的比较器，传给 TreeMap 用于 key 的比较。
-
-### HashSet如何实现的？
-
-HashSet 底层就是基于 HashMap 实现的，将添加的元素作为key，new一个Object作为value，直接调用HashMap的put方法来添加元素。
-
-### 线程安全的集合有哪些？
-
-针对List列表，线程安全的类有：Vector、Stack（继承Vector）、CopyOnWriteArrayList 、Collections.synchronizedList 包装 ArrayList。
-
-针对Map类型，线程安全的类有：HashTable、ConcurrentHashMap、Collections.synchronizedMap封装map。
-
-针对Set类型，线程安全的类有：CopyOnWriteArraySet、Collections.synchronizedSet包装 set。
-
-## 多线程
-
-### 如何知道一个线程状态/任务是否已经执行完成？
-
-1、在线程池内部，当一个任务丢给线程池去执行，线程池会调度工作线程来执行这个任务的run方法，run方法正常结束，也就意味着任务完成了。通过等待run方法返回，可以去统计任务的完成数量。
-
-2、在线程池外部获得线程池内部任务的执行状态，有几种方法可以实现：
-
-- isTerminated()方法，可以判断线程池的运行状态，可以调用isTerminated()方法了解线程池的运行状态，一旦线程池的运行状态是Terminated，意味着线程池中的所有任务都已经执行完了。想要通过这个方法获取状态的前提是，程序中主动调用了线程池的shutdown()方法。在实际业务中，一般不会主动去关闭线程池，因此这个方法在实用性和灵活性方面都不是很好。
-
-- 在线程池中，有一个submit()方法，它提供了一个Future的返回值，我们通过Future.get()方法来获得任务的执行结果，当线程池中的任务没执行完之前，future.get()方法会一直阻塞，直到任务执行结束。因此，只要future.get()方法正常返回，也就意味着传入到线程池中的任务已经执行完成了。
-
-- 可以引入一个CountDownLatch计数器，定义一个CountDownLatch对象并且计数器为1，接着在线程池代码块后面调用await()方法阻塞主线程，然后，当传入到线程池中的任务执行完成后，调用countDown()方法表示任务执行结束，计数器归零0，唤醒阻塞在await()方法的线程。
-
-  ```java
-  public static void main(String[] args) throws InterruptedException {
-  	ExecutorService executorService= Executors.newFixedThreadPool(10); 		CountDownLatch countDownLatch=new CountDownLatch(1);		
-      executorService.execute(new Runnable(){
-          @Override
-          public void run() {
-              //开始执行任务 try {
-              Thread.sleep(3000);//模拟任务执行时间
-              countDownLatch.countDown();//任务执行结束后，计数器减1} catch
-              (InterruptedException e){
-                  e.printStackTrace();
-              }});
-          //阻塞main线程|当任务执行结束调用countDown()方法使得计数器归零后，唤醒主线程。 
-          countDownLatch.await();
-          executorService.shutdown( );
-      }
-  ```
-
-  
-
-
-
-
+```java
+// 在堆中创建字符串对象”Java“
+// 将字符串对象”Java“的引用保存在字符串常量池中
+String s1 = "Java";
+// 直接返回字符串常量池中字符串对象”Java“对应的引用
+String s2 = s1.intern();
+// 会在堆中在单独创建一个字符串对象
+String s3 = new String("Java");
+// 直接返回字符串常量池中字符串对象”Java“对应的引用
+String s4 = s3.intern();
+// s1 和 s2 指向的是堆中的同一个对象
+System.out.println(s1 == s2); // true
+// s3 和 s4 指向的是堆中不同的对象
+System.out.println(s3 == s4); // false
+// s1 和 s4 指向的是堆中的同一个对象
+System.out.println(s1 == s4); //true
+```
 
