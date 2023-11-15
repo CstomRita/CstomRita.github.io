@@ -16,7 +16,11 @@ JUC框架包括五个部分：
 
 ## 锁机制
 
+![image](JUC.assets/java-thread-x-juc-overview-lock.png)
+
 ### AQS
+
+> AQS是一个用来构建锁和同步器的框架，使用AQS能简单且高效地构造出应用广泛的大量的同步器，比如我们提到的ReentrantLock，Semaphore，其他的诸如ReentrantReadWriteLock，SynchronousQueue，FutureTask等等皆是基于AQS的。当然，我们自己也能利用AQS非常轻松容易地构造出符合我们自己需求的同步器。
 
 
 
@@ -31,6 +35,8 @@ JUC框架包括五个部分：
 
 
 ## 集合类
+
+![image](JUC.assets/java-thread-x-juc-overview-2.png)
 
 ### ConcurrentHashMap
 
@@ -125,9 +131,64 @@ Linux的X86下主要是通过`cmpxchgl`这个指令在CPU级完成CAS操作的�
 
 
 
+### 原子类
 
+JDK中提供了12个原子操作类。
+
+#### 基本类型
+
+使用原子的方式更新基本类型，Atomic包提供了以下3个类。
+
+- AtomicBoolean: 原子更新布尔类型。
+- AtomicInteger: 原子更新整型。
+- AtomicLong: 原子更新长整型。
+
+#### 数组类型
+
+通过原子的方式更新数组里的某个元素，Atomic包提供了以下的3个类：
+
+- AtomicIntegerArray: 原子更新整型数组里的元素。
+- AtomicLongArray: 原子更新长整型数组里的元素。
+- AtomicReferenceArray: 原子更新引用类型数组里的
+
+这三个类的最常用的方法是如下两个方法：
+
+- get(int index)：获取索引为index的元素值。
+- compareAndSet(int i,E expect,E update): 如果当前值等于预期值，则以原子方式将数组位置i的元素设置为update值。
+
+```java
+public static void main(String[] args) throws InterruptedException {
+        AtomicIntegerArray array = new AtomicIntegerArray(new int[] { 0, 0 });
+        System.out.println(array);
+        System.out.println(array.getAndAdd(1, 2));
+        System.out.println(array);
+    }
+```
+
+#### 引用类型
+
+Atomic包提供了以下三个类：
+
+- AtomicReference: 原子更新引用类型。
+- AtomicStampedReference: 原子更新引用类型, 内部使用Pair来存储元素值及其版本号。
+- AtomicMarkableReferce: 原子更新带有标记位的引用类型。
+
+#### 字段更新器
+
+Atomic包提供了四个类进行原子字段更新：
+
+- AtomicIntegerFieldUpdater: 原子更新整型的字段的更新器。
+- AtomicLongFieldUpdater: 原子更新长整型字段的更新器。
+- AtomicReferenceFieldUpdater: 上面已经说过此处不在赘述。
+
+这四个类的使用方式都差不多，是基于反射的原子更新字段的值。要想原子地更新字段类需要两步:
+
+- 第一步，因为原子更新字段类都是抽象类，每次使用的时候必须使用静态方法newUpdater()创建一个更新器，并且需要设置想要更新的类和属性。
+- 第二步，更新类的字段必须使用public volatile修饰。
 
 ## 线程池
+
+![img](JUC.assets/java-thread-x-juc-executors-1.png)
 
 
 
