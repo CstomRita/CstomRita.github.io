@@ -1102,41 +1102,575 @@ Sentinel单独一个组件，可以独立出来，直接界面化的细粒度统
 
 
 
-## Seata //todo
+## Seata 
 
 Seata 是一个开源的分布式事务解决方案，它提供了高可用的事务管理功能和高性能的本地事务处理能力。
 
-### 分布式事务处理过程
+解决分布式事务问题，有两个设计初衷：
 
-分布式事务处理过程的唯一ID+三组件模型：
+- 对业务无侵入：即减少技术架构上的微服务化所带来的分布式事务问题对业务的侵入
+- 高性能：减少分布式事务解决方案所带来的性能消耗
 
-- Transaction ID XID（全局唯一的事务ID）
-- TC (Transaction Coordinator) - 事务协调者：维护全局和分支事务的状态，驱动全局事务提交或回滚。
-- TM (Transaction Manager) - 事务管理器：定义全局事务的范围：开始全局事务、提交或回滚全局事务。
-- RM (Resource Manager) - 资源管理器：管理分支事务处理的资源，与TC交谈以注册分支事务和报告分支事务的状态，并驱动分支事务提交或回滚。
-
-分布式事务的处理过程为：
-
-1. TM 向 TC 申请开启一个全局事务，全局事务创建成功并生成一个全局唯一的 XID；
-2. XID 在微服务调用链路的上下文中传播；
-3. RM 向 TC 注册分支事务，将其纳入 XID 对应全局事务的管辖；
-4. TM 向 TC 发起针对 XID 的全局提交或回滚决议；
-5. TC 调度 XID 下管辖的全部分支事务完成提交或回滚请求。
+> Spring本地事务使用：@Transactional
+>
+> Seata全局事务使用：@GlobalTransactional
 
 ### 实现原理
 
-Seata有三个组成部分：
+#### 事务
 
-- 事务协调器TC：协调者
-- 事务管理器TM：发起方
-- 资源管理器RM：参与方
+**本地事务：**事务由本地资源管理器管理。
 
-（1）发起方会向协调者申请一个全局事务id，并保存到ThreadLocal中（为什么要保存到ThreadLocal中？弱引用，线程之间不会发生数据冲突）
+**分布式事务：**事务的操作位于不同的节点。
 
-（2）Seata数据源代理发起方和参与方的数据源，将前置镜像和后置镜像写入到undo_log表中，方便后期回滚使用
+**分支事务：**在分布式事务中，由资源管理器管理的本地事务。
 
-（3）发起方获取全局事务id，通过改写Feign客户端请求头传入全局事务id。
+**全局事务：**一次性操作多个资源管理器完成的事务，由一组分支事务组成。
 
-（4）参与方从请求头中获取全局事务id保存到ThreadLocal中，并把该分支注册到SeataServer中。
+一般情况下，分支事务≈本地事务，分布式事务≈全局事务。
 
-（5）如果没有出现异常，发起方会通知协调者，协调者通知所有分支，通过全局事务id和本地事务id删除undo_log数据，如果出现异常，通过undo_log逆向生成sql语句并执行，然后删除undo_log语句。如果处理业务逻辑代码超时，也会回滚。
+#### 唯一ID+三组件模型
+
+Seata有三个组成部分，TM 和 RM 是作为 Seata 的客户端与业务系统集成在一起，TC 作为 Seata 的服务端独立部署：
+
+- Transaction ID XID（全局唯一的事务ID）
+- TC (Transaction Coordinator) - 事务协调者：维护全局和分支事务的状态，驱动全局事务提交或回滚。
+- TM (Transaction Manager) - 事务管理器：<font color=red>一个分布式事务的发起者和终结者，</font>定义全局事务的范围，开启一个全局事务、提交或回滚全局事务。
+- RM (Resource Manager) - 资源管理器：<font color=red>负责本地事务的运行，</font>管理分支事务处理的资源，与TC交谈以注册分支事务和报告分支事务的状态，并驱动分支事务提交或回滚。
+
+![image-20231120152507267](SpringCloudAlibaba.assets/image-20231120152507267.png)
+
+Seata 中事务生命周期：
+
+- Begin(TM)
+- Registry(RM)
+- Commit(TM&TC)
+- Rollback(TM&TC)
+
+##### 事务创建-TM
+
+Seata 中用于创建和决议事务结果的实体,一般集成于业务调用链路的上游。
+
+##### 本地事务-RM
+
+用于管理资源的实体，一般情况下等同于微服务中的提供方(provider)，管理其所在服务中的资源，如数据库资源等。
+
+##### 事务协调-TC
+
+Seata 中用于两段提交方式的事务模式统一协调事务的实体(SAGA除外),其可由事务管理者驱动或自身驱动进行事务的二阶段行为.
+
+- Commit：
+
+  Seata 中当事务管理器决议为提交时,TC才会进行对事务的二阶段提交行为下发,如TCC模式中的confirm,AT模式的undolog delete,XA模式的XA Commit。
+
+- Rollback：
+
+  Seata 中当事务管理器决议为回滚时,TC会进行对事务的二阶段回滚行为下发,如TCC模式中的cancel,AT模式的undo,XA模式的XA Rollback。
+
+- TimeoutRollback：
+
+  Seata 中当事务管理器创建事务时指定的Timeout时间到达后还未决议时,TC会主动将已超时的事务进行超时回滚,其超时行为等同上述Rollback行为。
+
+#### 处理过程
+
+1. TM 向 TC 申请开启一个全局事务，全局事务创建成功并生成一个全局唯一的 XID，XID 会在微服务调用链路的上下文中传播
+2. 调用本地事务1，向 TC 注册分支事务，接着执行这个分支事务并提交，将执行结果汇报给TC
+3. 调用本地事务2，向 TC 注册分支事务，接着执行这个分支事务并提交，将执行结果汇报给TC
+4. TM 根据 TC 中所有的分支事务的执行情况，发起针对 XID 的全局提交或回滚决议；
+5. TC 调度 XID 下管辖的全部分支事务完成提交或回滚请求。
+
+> 例如 订单库存的分布式事务流程：![image-20231120160009219](SpringCloudAlibaba.assets/image-20231120160009219.png)
+
+
+
+### 事务模式
+
+Seata 将为用户提供了 AT、TCC、SAGA 和 XA 事务模式。
+
+#### XA模式
+
+> [!tip]XA模式使用两阶段提交（2PC）来保证事务的一致性和可靠性。
+
+##### 前提
+
+- 支持XA 事务的数据库。
+- Java 应用，通过 JDBC 访问数据库。
+
+##### 处理阶段
+
+在 Seata 定义的分布式事务框架内，利用事务资源（数据库、消息服务等）对 XA 协议的支持，以 XA 协议的机制来管理分支事务的一种 事务模式。
+
+![img](SpringCloudAlibaba.assets/arch-transection-17.png)
+
+**执行阶段**：
+
+1. 可回滚：业务 SQL 操作放在 XA 分支中进行，由资源对 XA 协议的支持来保证可回滚
+2. 持久化：XA 分支完成后，执行 XA prepare，同样，由资源对 XA 协议的支持来保证持久化
+
+**完成阶段**：
+
+1. 分支提交：执行 XA 分支的 commit
+2. 分支回滚：执行 XA 分支的 rollback
+
+##### 使用
+
+无代码入侵。
+
+添加配置seata:data-source-proxy-mode: XA
+
+需要分布式事务的业务代码上添加注解@GlobalTransactional
+
+##### 优缺点
+
+优点：
+
+- 一致性：XA模式通过两阶段提交协议，确保所有参与者要么一起提交事务，要么一起中断事务，从而保证事务的一致性。
+- 可靠性：XA模式提供了强一致性和可靠性的保证，在分布式环境下可以确保事务的正确执行。
+- 标准化：XA模式是一种标准的分布式事务处理协议，被广泛支持和应用于各种数据库和资源管理器中。
+
+缺点：
+
+- 性能开销：在XA模式中，需要进行多次网络通信和协调操作，这会引入额外的性能开销，并且可能会导致事务处理的延迟增加。
+- 阻塞风险：在准备阶段和提交阶段，所有的参与者都需要等待事务协调器的指令，这可能导致一些参与者在等待期间被阻塞，影响系统的吞吐量和并发性能。
+- 单点故障：在XA模式中，事务协调器起着关键的角色，如果事务协调器出现故障，整个分布式事务系统可能无法正常运行
+
+#### AT模式
+
+> [!tip]
+>
+> Seata AT模式是基于XA事务演进而来的。用户只需关注自己的“业务 SQL”，用户的 “业务 SQL” 作为一阶段，Seata 框架会自动生成事务的二阶段提交和回滚操作。
+
+通过在每个参与者的本地事务中实现事务的原子性和隔离性，来保证分布式事务的一致性。
+
+AT模式避免了全局锁和阻塞的问题，从而提高了系统的并发性能。在AT模式中，参与者的本地事务执行成功后即可提交，而不需要等待其他参与者的状态。
+
+##### 前提
+
+基于支持本地 ACID 事务的关系型数据库。
+
+Java 应用，通过 JDBC 访问数据库。
+
+##### 处理阶段
+
+![image-20231120144650255](SpringCloudAlibaba.assets/image-20231120144650255.png)
+
+###### 一阶段
+
+业务数据和回滚日志记录在同一个本地事务中提交，释放本地锁和连接资源。
+
+![image-20231120145041049](SpringCloudAlibaba.assets/image-20231120145041049.png)
+
+1. Seata 会拦截“业务 SQL”，首先解析 SQL 语义，找到“业务 SQL”要更新的业务数据
+
+2. 在业务数据被更新前，将其保存成“before image”，然后执行“业务 SQL”更新业务数据
+
+3. 在业务数据更新之后，再将其保存成“after image”，最后生成行锁。
+
+以上操作全部在一个数据库事务内完成，这样保证了一阶段操作的原子性。
+
+###### 二阶段
+
+提交异步化，非常快速地完成。因为“业务 SQL”在一阶段已经提交至数据库， 所以 Seata 框架只需将一阶段保存的快照数据和行锁删掉，完成数据清理即可。
+
+如果需要回滚，回滚方式便是用“before image”还原业务数据；但在还原前要首先要校验脏写，对比“数据库当前业务数据”和 “after image”，如果两份数据完全一致就说明没有脏写，可以还原业务数据，如果不一致就说明有脏写，出现脏写就需要转人工处理。
+
+![image-20231120145227523](SpringCloudAlibaba.assets/image-20231120145227523.png)
+
+##### 优化
+
+Seata的AT模式是在AT模式基础上进行了扩展和优化的实现。
+
+- Seata引入了Seata Server和Seata Client的概念，通过Seata Server作为事务协调器，集中管理分布式事务的控制逻辑。
+- Seata的AT模式还提供了更多的功能和工具，如分布式事务日志和分布式锁，以增强分布式事务的可靠性和性能。
+
+##### 锁机制
+
+AT模式是基于本地锁、全局锁机制。
+
+###### 本地锁
+
+本地锁指的就是数据库本身的行锁或者表锁，依赖数据库本身的commit和回滚操作，这也是为什么AT要求支持ACID的数据库。
+
+分支事务通过本地锁实现了隔离，隔离级别默认为读已提交，即开启事务A的分支事务a1获得本地锁，一旦提交分支事务，就释放本地锁，别的事务就可以读到a1的数据；
+
+本地锁带来的脏读问题：
+
+<font color=red>开启事务A的分支事务a1获得本地锁，一旦提交分支事务，就释放本地锁，别的事务B就可以读到a1的数据，如果a1不回滚，就没问题；但若事务A回滚，B读到的即为脏数据。</font>
+
+> [!ATTENTION] 因此本地锁需要解决的问题是，整个事务A没有提交的时候，a1不能被别的事务可见，也不能被别的事务修改。
+>
+> 由本地锁保障a1不能被别的事务修改；全局锁保障a1不能被别的事务可见。
+
+###### 全局锁
+
+全局锁是 Seata 自己实现的，保证了先拿到全局锁的全局事务做完了所有事之后，其它全局事务才能提交本地事务。
+
+全局锁 是把分支事务数据库中的数据的主键的某个值注册到 TC，它是全局的，因此交全局锁，锁住的是分支事务数据库中要修改的那行记录，是行锁粒度的。
+
+```java
+protected LockDO convertToLockDO(RowLock rowLock) {
+        LockDO lockDO = new LockDO();
+        lockDO.setBranchId(rowLock.getBranchId());
+        lockDO.setPk(rowLock.getPk());
+        lockDO.setResourceId(rowLock.getResourceId());
+        // row_key的生成
+        lockDO.setRowKey(getRowKey(rowLock.getResourceId(), rowLock.getTableName(), rowLock.getPk()));
+        lockDO.setXid(rowLock.getXid());
+        lockDO.setTransactionId(rowLock.getTransactionId());
+        lockDO.setTableName(rowLock.getTableName());
+        return lockDO;
+    }
+//`row_key`是由`resource_id`、`tableName`、`pk`这三个字段连接生成的，也就意味着`row_key`是代表`表里面的具体一行数据`，也就是我们的`行记录`，所以确信`AT`模式的全局锁其实就是`行锁`。
+```
+
+> [!ATTENTION] 
+>
+> 本地锁的工作方式是，第一阶段提交后，就释放本地锁。
+>
+> 全局锁的工作方式是，只有第二阶段提交全局事务或者全局回滚时，才会释放全局锁。
+
+###### 锁机制
+
+一阶段本地事务提交前，需要确保先拿到**全局锁**：
+
+- 拿不到全局锁 ，不能提交本地事务
+- 拿全局锁的尝试被限制在一定范围内，超出范围将放弃，并回滚本地事务，释放本地锁
+- 本地提交后，释放本地锁
+
+> 两个全局事务 tx1 和 tx2，分别对 a 表的 m 字段进行更新操作，m 的初始值 1000。
+>
+> ![img](SpringCloudAlibaba.assets/arch-transection-7.png)
+>
+> tx1 先开始，开启本地事务，拿到本地锁，更新操作 m = 1000 - 100 = 900。本地事务提交前，先拿到该记录的 全局锁 ，本地提交释放本地锁。
+>
+> tx2 后开始，开启本地事务，拿到本地锁，更新操作 m = 900 - 100 = 800。本地事务提交前，尝试拿该记录的 全局锁 ，tx1 全局提交前，该记录的全局锁被 tx1 持有，tx2 需要重试等待 全局锁。
+>
+> tx1 二阶段全局提交，释放 全局锁 。tx2 拿到 全局锁 提交本地事务。
+>
+> -----------------------------------------------------------------
+>
+> 如果 tx1 的二阶段全局回滚，则 tx1 需要重新获取该数据的本地锁，进行反向补偿的更新操作，实现分支的回滚。
+>
+> 此时，如果 tx2 仍在等待该数据的 全局锁，同时持有本地锁，则 tx1 的分支回滚会失败。分支的回滚会一直重试，直到 tx2 的 全局锁 等锁超时，放弃 全局锁 并回滚本地事务释放本地锁，tx1 的分支回滚最终成功。
+>
+> 因为整个过程 全局锁 在 tx1 结束前一直是被 tx1 持有的，所以不会发生 脏写 的问题。
+>
+> ![img](SpringCloudAlibaba.assets/arch-transection-8.png)
+
+###### 脏写问题
+
+假设业务代码是这样的：
+
+- `updateAll()`用来同时更新A和B表记录，`updateA()` `updateB()`则分别更新A、B表记录
+- `updateAll()`已经加上了`@GlobalTransactional`
+- 业务一调用updateAll（UpdateA+UpdateB两个分支事务）；业务二调用updateA
+
+![img](SpringCloudAlibaba.assets/443934-20221016180856966-1832739273.png)
+
+业务一调用UpdateB发生异常回滚时，发现A记录已被修改，会造成无法全局回滚。原因是业务二调用的UpdateA只是一个分支事务，没有使用`@GlobalTransactional`注解，按照本地事务处理，不会请求全局锁。
+
+> [!WARNING] 这也是常会出现问题的一点，不要以为只要分布式事务使用全局事务标记了就没有问题，不要以为单独的本地事务不需要全局事务标记，可能会引发脏写、无法回滚。
+
+【解决方案一：UpdateA使用`@GlobalTransactional`注解标记全局事务】
+
+![img](SpringCloudAlibaba.assets/443934-20221016180857244-1705354832.png)
+
+【解决方案二：用for update 或 GlobalLock申请全局锁】
+
+![img](SpringCloudAlibaba.assets/443934-20221016180856915-681848495.png)
+
+###### 脏读问题
+
+在数据库本地事务隔离级别 **读已提交（Read Committed）** 或以上的基础上，Seata（AT 模式）的默认全局隔离级别是 **读未提交（Read Uncommitted）** 。
+
+如果应用在特定场景下，必需要求全局的读已提交 ，配合使用`@GlobalLock + select for update `,就可以形成读已提交隔离级别。
+
+<font color=red>Seata改写了SELECT FOR UPDATE 语句的代理，SELECT FOR UPDATE 语句的执行会申请 全局锁 ，</font>如果 全局锁 被其他事务持有，则释放本地锁（回滚 SELECT FOR UPDATE 语句的本地执行）并重试。这个过程中，查询是被 block 住的，直到 全局锁 拿到，即读取的相关数据是已提交的才返回。
+
+出于总体性能上的考虑，Seata 目前的方案并没有对所有 SELECT 语句都进行代理，仅针对 FOR UPDATE 的 SELECT 语句。
+
+![img](SpringCloudAlibaba.assets/443934-20221016180856937-993086842.png)
+
+###### @GlobalLock
+
+有的方法它可能并不需要`@GlobalTransactional`的事务管理，但是我们又希望它对数据的修改能够加入到seata机制当中。那么这时候就需要`@GlobalLock`了。
+
+加上了`@GlobalLock`，在事务提交的时候会申请全局锁。
+
+```java
+@GlobalLock(lockRetryInternal = 100, lockRetryTimes = 100)
+    @GetMapping("/GlobalLock")
+    @Transactional
+    public Object GlobalLock() {
+        AccountTbl accountTbl = accountTblMapper.selectById(11111111);
+        AccountTbl accountTbl1 = accountTbl.setMoney(accountTbl.getMoney() - 1);
+        accountTblMapper.updateById(accountTbl1);
+        return "成功执行！！！";
+    }
+```
+
+注意事项，在使用@GlobalLock注解的时候：
+
+1. 必须要添加@transaction注解
+2. 最好写for update语句，在查询方法中添加排它锁，比如根据ID 查询时，需要如下SQL 书写：
+
+```sql
+<select id="selectById" parameterType="integer" resultType="com.hnmqet.demo01.entity.AccountTbl">
+    SELECT id,user_id,money FROM account_tbl WHERE id=#{id} FOR UPDATE
+</select>
+```
+这是因为，只有添加了 FOR UPDATE，Seata 才会进行创建<font color=red>**重试**</font>的执行器，这样事务失败时，会释放本地锁，等待一定时间再重试。如果不添加，则会一直占有本地锁，全局事务回滚需要本地锁，则全局事务就只能等@GlobalLock事务超时失败才能拿到本地锁释放全局锁，造成@GlobalLock永远获取不到全局锁。
+
+> 只用`@GlobalLock`能不能防止脏写？
+>
+> 能。
+>
+> 但`select for update`能带来这么几个好处：
+>
+> - 锁冲突更“温柔”些。如果只有`@GlobalLock`，检查到全局锁，则立刻抛出异常，并不会重试，也许再“坚持”那么一下，全局锁就释放了，抛出异常岂不可惜了。
+> - 在`updateA()`中可以通过`select for update`获得最新的A，接着再做更新。
+
+##### 使用
+
+无代码入侵。
+
+添加配置seata:data-source-proxy-mode: AT
+
+需要分布式事务的业务代码上添加注解@GlobalTransactional
+
+##### 优缺点
+
+优点：
+
+- 较高的性能：AT模式在每个参与者的本地事务中执行操作，避免了全局锁和阻塞的问题，提高了系统的并发性能。
+- 简化的实现：相对于XA模式，AT模式的实现相对简单，不需要涉及全局事务协调器，减少了开发和维护的复杂性。
+- 本地事务的独立性：每个参与者在本地事务管理器中管理自己的事务，可以独立控制和优化本地事务的执行。
+
+缺点：
+
+- 弱一致性：AT模式对一致性的要求相对较低，可能会出现数据不一致的情况。在某些场景下，可能需要更高的一致性保证，需要考虑其他分布式事务处理模式。
+- 隔离级别限制：由于AT模式依赖于本地事务的隔离性，参与者的隔离级别受限于本地事务管理器支持的隔离级别，可能无法满足某些特定的隔离需求。
+- 容错性和恢复性：AT模式在发生故障或错误时，需要考虑如何处理事务的回滚和恢复，以确保数据的一致性和可靠性。
+
+#### TCC模式
+
+> [!tip]
+>
+> TCC 模式不依赖于底层数据资源的事务支持，需要用户根据自己的业务场景实现 Try、Confirm 和 Cancel 三个操作；事务发起方在一阶段执行 Try 方式，在二阶段提交执行 Confirm 方法，二阶段回滚执行 Cancel 方法。
+
+##### 处理阶段
+
+Try阶段（尝试阶段）：在这个阶段，参与者（服务）尝试预留或锁定资源，并执行必要的前置检查。如果所有参与者的Try操作都成功，表示资源可用，并进入下一阶段。如果有任何一个参与者的Try操作失败，表示资源不可用或发生冲突，事务将中止。
+
+Confirm阶段（确认阶段）：在这个阶段，参与者进行最终的确认操作，将资源真正提交或应用到系统中。如果所有参与者的Confirm操作都成功，事务完成，提交操作得到确认。如果有任何一个参与者的Confirm操作失败，事务将进入Cancel阶段。
+
+Cancel阶段（取消阶段）：在这个阶段，参与者进行回滚或取消操作，将之前尝试预留或锁定的资源恢复到原始状态。如果所有参与者的Cancel操作都成功，事务被取消，资源释放。如果有任何一个参与者的Cancel操作失败，可能需要进行补偿或人工介入来恢复系统一致性。
+
+##### 优化
+
+Seata的TCC模式是在TCC模式基础上进行了扩展和优化的实现。
+
+- Seata引入了Seata Server作为事务协调器，集中管理分布式事务的控制逻辑。
+
+- Seata的TCC模式还提供了分布式事务日志和分布式锁等功能，以增强事务的可靠性和性能。
+
+- Seata的TCC模式可以更方便地集成到应用中，并提供了更好的事务管理和监控能力。
+
+##### 使用
+
+以账户转账为例。
+
+- 定义参与者接口，实现try、confirm、cancel方法：
+
+```java
+public interface AccountService {
+boolean tryTransfer(String fromAccount, String toAccount, double amount);
+boolean confirmTransfer(String fromAccount, String toAccount, double amount);
+boolean cancelTransfer(String fromAccount, String toAccount, double amount);
+}
+```
+
+- 实现参与者逻辑：
+
+```java
+public class AccountServiceImpl implements AccountService {
+@Override
+public boolean tryTransfer(String fromAccount, String toAccount, double amount) {
+// 执行转账操作，预留转出账户金额，检查账户余额等
+// 如果成功，返回 true；如果失败，返回 false
+}
+@Override
+public boolean confirmTransfer(String fromAccount, String toAccount, double amount) {
+// 确认转账操作，将预留金额转出
+// 如果成功，返回 true；如果失败，返回 false
+}
+@Override
+public boolean cancelTransfer(String fromAccount, String toAccount, double amount) {
+// 取消转账操作，将预留金额回滚到账户
+// 如果成功，返回 true；如果失败，返回 false
+}
+}
+```
+
+- 客户端调用，先调用try，try成功，则commit，否则rollback
+
+```java
+// 获取Seata全局事务ID
+String xid = RootContext.getXID();
+// 开启全局事务
+TransactionContext context = new TransactionContext();
+context.setXid(xid);
+GlobalTransaction tx = GlobalTransactionContext.getCurrentOrCreate();
+try {
+// 调用参与者的tryTransfer方法
+	boolean tryResult = accountService.tryTransfer(fromAccount, toAccount, amount);
+	if (tryResult) {
+		// 提交全局事务
+		tx.commit();
+	} else {
+	// 回滚全局事务
+	tx.rollback();
+	}
+	} catch (Exception e) {
+// 异常时回滚全局事务tx.rollback();
+}
+```
+
+##### 优缺点
+
+优点：
+
+- 一阶段完成直接提交事务，释放数据库资源，性能好；
+- 相比AT模型，无需生成快照，无需使用全局锁，性能最强；
+- 不依赖数据库事务，而是依赖补偿操作，可以用于非事务型数据库；
+
+缺点：
+
+- 有代码侵入，需要人为编写try、Confirm和Cancel接口，太麻烦
+- 软状态，事务是最终一致；
+- 需要考虑Confirm和Cancel的失败情况,做好幂等处理
+
+#### SAGA模式
+
+##### 执行过程
+
+执行正向操作：按照事务的逻辑顺序，依次执行正向操作。每个正向操作都会记录事务的执行状态。
+
+- 如果所有的正向操作都成功执行，则事务提交完成。
+- 如果某个正向操作失败，将会触发相应的补偿操作。补偿操作会撤销或修复正向操作的影响。
+
+执行补偿操作：按照逆序依次执行已经触发的补偿操作。补偿操作应该具备幂等性，以便可以多次执行而不会造成副作用。
+- 如果所有的补偿操作都成功执行，则事务回滚完成。
+- 如果补偿操作也失败，需要人工介入或其他手段来解决事务的一致性问题。
+
+##### 优化
+
+Seata的Saga模式相对于传统的Saga模式，具有以下特点：
+
+- 集成性：Seata的Saga模式与Seata框架紧密集成，可以与Seata的其他特性一起使用，如分布式事务日志和分布式锁等。
+- 强一致性：Seata的Saga模式提供了强一致性的事务支持，确保事务的执行顺序和一致性。
+- 可靠性：Seata的Saga模式在补偿操作的执行过程中，支持重试和恢复机制，提高了事务的可靠性和恢复能力。
+
+##### 使用
+
+以下订单-扣减库存为例。
+
+定义参与者接口，实现创建和取消接口：
+
+```java
+public interface OrderService {
+boolean createOrder(String orderId, String userId, String productId, int quantity);
+boolean cancelOrder(String orderId);
+}
+public interface ProductService {
+boolean reduceStock(String productId, int quantity);
+boolean revertStock(String productId, int quantity);
+}
+```
+
+实现参与者逻辑：
+
+```java
+public class OrderServiceImpl implements OrderService {
+@Override
+public boolean createOrder(String orderId, String userId, String productId, int quantity) {
+// 执行订单创建逻辑，如创建订单记录、扣减用户余额等
+// 如果成功，返回 true；如果失败，返回 false
+}
+@Override
+public boolean cancelOrder(String orderId) {
+// 执行订单取消逻辑，如回滚订单记录、恢复用户余额等
+// 如果成功，返回 true；如果失败，返回 false
+}
+}
+public class ProductServiceImpl implements ProductService {
+@Override
+public boolean reduceStock(String productId, int quantity) {
+// 执行减少库存逻辑，如更新产品库存、记录库存变更日志等
+// 如果成功，返回 true；如果失败，返回 false
+}
+@Override
+public boolean revertStock(String productId, int quantity) {
+// 执行恢复库存逻辑，如恢复产品库存、删除库存变更日志等
+// 如果成功，返回 true；如果失败，返回 false}
+}
+```
+
+客户端调用，按照事务的逻辑顺序，依次执行正向操作，操作结果成功，则提交全局事务：
+
+```java
+// 获取Seata全局事务ID
+String xid = RootContext.getXID();
+// 开启全局事务
+TransactionContext context = new TransactionContext();
+context.setXid(xid);
+GlobalTransaction tx = GlobalTransactionContext.getCurrentOrCreate();
+try {
+	// 调用参与者的方法
+	boolean createOrderResult = orderService.createOrder(orderId, userId, productId, quantity);
+	boolean reduceStockResult = productService.reduceStock(productId, quantity);
+	if (createOrderResult && reduceStockResult) {
+		// 提交全局事务tx.commit();
+	} else {
+		// 回滚全局事务
+	tx.rollback();
+	}
+	} catch (Exception e) {// 异常时回滚全局事务tx.rollback();
+}
+```
+
+##### 优缺点
+
+优点：
+
+- 一阶段提交本地事务，无锁，高性能
+- 事件驱动架构，参与者可异步执行，高吞吐
+- 补偿服务易于实现，不用编写TCC中的三个阶段，实现简单
+
+缺点：
+
+- 没有锁，不保证隔离性，会有脏写；
+- 软状态持续时间不确定，时效性差
+
+#### 四种模式对比
+
+|          | XA                             | AT                                         | TCC                                                      | SAGA                                                         |
+| -------- | ------------------------------ | ------------------------------------------ | -------------------------------------------------------- | ------------------------------------------------------------ |
+| 一致性   | 强一致                         | 弱一致                                     | 弱一致                                                   | 最终一致                                                     |
+| 隔离性   | 完全隔离                       | 基于全局锁隔离                             | 基于资源预留隔离                                         | 无隔离                                                       |
+| 代码侵入 | 无                             | 无                                         | 有，需要编写三个接口                                     | 有，需要编写状态机和补偿业务                                 |
+| 性能     | 差                             | 好                                         | 非常好                                                   | 非常好                                                       |
+| 场景     | 对一致性、隔离性有高要求的业务 | 基于关系型数据库的大多数分布式务场景都可以 | 1.对性能要求较高的事务；2.有非关系型数据库要参与的事务； | 1.业务流程长、业务流程多；2.参与者包含其它公司或遗留系统服务，无法提供TCC模式要求的三个接口 |
+
+**XA 模式**： 是分布式强一致性的解决方案，但性能低而使用较少。
+
+**AT 模式**： 是无侵入的分布式事务解决方案，适用于不希望对业务进行改造的场景，几乎0学习成本。
+
+**TCC 模式**： 是高性能分布式事务解决方案，适用于核心系统等对性能有很高要求的场景。
+
+**Saga 模式**： 是长事务解决方案，适用于业务流程长且需要保证事务最终一致性的业务系统，Saga 模式一阶段就会提交本地事务，无锁，长流程情况下可以保证性能，多用于渠道层、集成层业务系统。事务参与者可能是其它公司的服务或者是遗留系统的服务，无法进行改造和提供 TCC 要求的接口，也可以使用 Saga 模式。
+
+### 实践经验
+
+[分布式事务 Seata Saga 模式首秀以及三种模式详解 | Meetup#3 回顾 - 掘金 (juejin.cn)](https://juejin.cn/post/6844903913691283469#heading-11)
+
