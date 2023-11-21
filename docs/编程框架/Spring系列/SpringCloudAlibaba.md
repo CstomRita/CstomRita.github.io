@@ -1218,7 +1218,24 @@ Seata 将为用户提供了 AT、TCC、SAGA 和 XA 事务模式。
 
 添加配置seata:data-source-proxy-mode: XA
 
+```yml
+# 配置seata的注册中心
+seata:
+  data-source-proxy-mode: XA # 选择XA模式
+
+```
+
 需要分布式事务的业务代码上添加注解@GlobalTransactional
+
+```java
+@GlobalTransactional
+public Result<Void> createOrder(Long productId,Long num,.....){
+    //1、扣库存
+    reduceStorage();
+    //2、创建订单
+    saveOrder();
+}
+```
 
 ##### 优缺点
 
@@ -1264,7 +1281,7 @@ Java 应用，通过 JDBC 访问数据库。
 
 2. 在业务数据被更新前，将其保存成“before image”，然后执行“业务 SQL”更新业务数据
 
-3. 在业务数据更新之后，再将其保存成“after image”，最后生成行锁。
+3. 在业务数据更新之后，再将其保存成“after image”，占据全局锁。
 
 以上操作全部在一个数据库事务内完成，这样保证了一阶段操作的原子性。
 
@@ -1275,6 +1292,62 @@ Java 应用，通过 JDBC 访问数据库。
 如果需要回滚，回滚方式便是用“before image”还原业务数据；但在还原前要首先要校验脏写，对比“数据库当前业务数据”和 “after image”，如果两份数据完全一致就说明没有脏写，可以还原业务数据，如果不一致就说明有脏写，出现脏写就需要转人工处理。
 
 ![image-20231120145227523](SpringCloudAlibaba.assets/image-20231120145227523.png)
+
+###### undo log
+
+RM执行本地事务时，会首先解析SQL语句，生成对应的UNDO_LOG记录
+
+```sql
+{
+    "branchId": 641789253,
+    "undoItems": [{
+        "afterImage": {
+            "rows": [{
+                "fields": [{
+                    "name": "id",
+                    "type": 4,
+                    "value": 1
+                }, {
+                    "name": "name",
+                    "type": 12,
+                    "value": "GTS"
+                }, {
+                    "name": "since",
+                    "type": 12,
+                    "value": "2014"
+                }]
+            }],
+            "tableName": "product"
+        },
+        "beforeImage": {
+            "rows": [{
+                "fields": [{
+                    "name": "id",
+                    "type": 4,
+                    "value": 1
+                }, {
+                    "name": "name",
+                    "type": 12,
+                    "value": "TXC"
+                }, {
+                    "name": "since",
+                    "type": 12,
+                    "value": "2014"
+                }]
+            }],
+            "tableName": "product"
+        },
+        "sqlType": "UPDATE"
+    }],
+    "xid": "xid:xxx"
+}
+```
+
+AT在第一阶段就直接提交事务，是因为Seata框架为每一个RM维护了一张UNDO_LOG表（这张表需要客户端自行创建），其中保存了每一次本地事务的回滚数据。
+
+因此，二阶段的回滚并不依赖于本地数据库事务的回滚，而是RM直接读取这张UNDO_LOG表，并将数据库中的数据更新为UNDO_LOG中存储的历史数据。
+
+如果第二阶段是提交命令，那么RM事实上并不会对数据进行提交（因为一阶段已经提交了），而实发起一个异步请求删除UNDO_LOG中关于本事务的记录。
 
 ##### 优化
 
@@ -1307,6 +1380,8 @@ AT模式是基于本地锁、全局锁机制。
 
 全局锁 是把分支事务数据库中的数据的主键的某个值注册到 TC，它是全局的，因此交全局锁，锁住的是分支事务数据库中要修改的那行记录，是行锁粒度的。
 
+<font color=red>`row_key`是由`resource_id`、`tableName`、`pk`这三个字段连接生成的，也就意味着`row_key`是代表`表里面的具体一行数据`，也就是我们的`行记录`，所以确信`AT`模式的全局锁其实就是`行锁`。</font>
+
 ```java
 protected LockDO convertToLockDO(RowLock rowLock) {
         LockDO lockDO = new LockDO();
@@ -1320,7 +1395,6 @@ protected LockDO convertToLockDO(RowLock rowLock) {
         lockDO.setTableName(rowLock.getTableName());
         return lockDO;
     }
-//`row_key`是由`resource_id`、`tableName`、`pk`这三个字段连接生成的，也就意味着`row_key`是代表`表里面的具体一行数据`，也就是我们的`行记录`，所以确信`AT`模式的全局锁其实就是`行锁`。
 ```
 
 > [!ATTENTION] 
@@ -1432,11 +1506,66 @@ protected LockDO convertToLockDO(RowLock rowLock) {
 
 ##### 使用
 
+###### 创建表
+
+lock_table（全局锁）表导入到TC服务关联的数据库
+
+```sql
+DROP TABLE IF EXISTS `lock_table`;
+CREATE TABLE `lock_table`  (
+  `row_key` varchar(128) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL,
+  `xid` varchar(96) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
+  `transaction_id` bigint(20) NULL DEFAULT NULL,
+  `branch_id` bigint(20) NOT NULL,
+  `resource_id` varchar(256) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
+  `table_name` varchar(32) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
+  `pk` varchar(36) CHARACTER SET utf8 COLLATE utf8_general_ci NULL DEFAULT NULL,
+  `gmt_create` datetime NULL DEFAULT NULL,
+  `gmt_modified` datetime NULL DEFAULT NULL,
+  PRIMARY KEY (`row_key`) USING BTREE,
+  INDEX `idx_branch_id`(`branch_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci ROW_FORMAT = Compact;
+```
+
+undo_log（记录快照）表导入到微服务关联的数据库
+
+```sql
+DROP TABLE IF EXISTS `undo_log`;
+CREATE TABLE `undo_log`  (
+  `branch_id` bigint(20) NOT NULL COMMENT 'branch transaction id',
+  `xid` varchar(100) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT 'global transaction id',
+  `context` varchar(128) CHARACTER SET utf8 COLLATE utf8_general_ci NOT NULL COMMENT 'undo_log context,such as serialization',
+  `rollback_info` longblob NOT NULL COMMENT 'rollback info',
+  `log_status` int(11) NOT NULL COMMENT '0:normal status,1:defense status',
+  `log_created` datetime(6) NOT NULL COMMENT 'create datetime',
+  `log_modified` datetime(6) NOT NULL COMMENT 'modify datetime',
+  UNIQUE INDEX `ux_undo_log`(`xid`, `branch_id`) USING BTREE
+) ENGINE = InnoDB CHARACTER SET = utf8 COLLATE = utf8_general_ci COMMENT = 'AT transaction mode undo table' ROW_FORMAT = Compact;
+```
+
+###### 业务使用
+
 无代码入侵。
 
 添加配置seata:data-source-proxy-mode: AT
 
+```yml
+# 配置seata的注册中心
+seata:
+  data-source-proxy-mode: AT # 选择XA模式
+```
+
 需要分布式事务的业务代码上添加注解@GlobalTransactional
+
+```java
+@GlobalTransactional
+public Result<Void> createOrder(Long productId,Long num,.....){
+    //1、扣库存
+    reduceStorage();
+    //2、创建订单
+    saveOrder();
+}
+```
 
 ##### 优缺点
 
@@ -1478,61 +1607,93 @@ Seata的TCC模式是在TCC模式基础上进行了扩展和优化的实现。
 
 ##### 使用
 
-以账户转账为例。
+###### 定义参与者接口
 
-- 定义参与者接口，实现try、confirm、cancel方法：
+定义try、confirm、cancel方法：
 
 ```java
-public interface AccountService {
-boolean tryTransfer(String fromAccount, String toAccount, double amount);
-boolean confirmTransfer(String fromAccount, String toAccount, double amount);
-boolean cancelTransfer(String fromAccount, String toAccount, double amount);
-}
+/*TCC的事务模型*/
+@LocalTCC
+public interface OrderTccService {
+
+/*	一阶段的try方法，用于资源的预留
+    该注解@BusinessActionContextParameter:用于设置参数到 BusinessActionContexl中，这样二阶段的confirm和cancel方法便能获取参数该注解
+    @TwoPhaseBusinessAction:标记两阶段事务，commitMethod这个属性设置confirm方法名， rollbackMethod这个属性设置cancel方法名
+Params: businessActionContext-用于向第二阶段传递参数，比如全局事务ID，分支ID，入参....*/
+    
+@TwoPhaseBusinessAction(name="orderTcc",commitMethod ="commit",rollbackMethod = "rollback") boolean tryCreate(BusinessActionContext businessActionContext,
+@BusinessActionContextParameter(paramName = "userId") string userId,@BusinessActionContextParameter(paramName = "orderid") String orderId,@BusinessActionContextParameter(paramName = "productid") Long productId,@BusinessActionContextParameter(paramName = "num") Long num);
+
+/*二阶段的confirm方法，用于事务的提交
+Params: businessActionContext-通过该参数能够获取一阶段的入参，全局事务ID.....
+Returns: 返回true则表示成功执行，返回false则执行失败，Seata默认会不断的重试，直到成功*/
+    boolean commit(BusinessActionContext businessActionContext);
+
+/*二阶段的cancel方法，用于事务的回滚
+Params: businessActionContext-通过该参数能够获取一阶段的入参，全局事务ID......
+Returns: 返回true则表示成功执行，返回false则执行失败，Seata默认会不断的重试，直到成功*/
+    boolean rollback(BusinessActionContext businessActionContext);
 ```
 
-- 实现参与者逻辑：
+1. **@LocalTCC**：该注解开启TCC事务
+
+2. **@TwoPhaseBusinessAction**：该注解标注在try方法上，其中的三个属性如下：
+   1. **name**：TCC事务的名称，必须是唯一的
+
+   2. **commitMethod**：confirm方法的名称，默认是commit
+
+   3. **rollbackMethod**：cancel方法的名称，，默认是rollback
+
+3. confirm和cancel的返回值尤为重要，返回false则会不断的重试。
+
+###### 接口实现类
+
+try\cancel\confirm逻辑实现。注意：必须要开启本地事务，使用@Transactional开启本地事务
+
+![image-20231121112420071](SpringCloudAlibaba.assets/image-20231121112420071.png)
+
+**①**处的代码是为了防止悬挂异常，从事务日志表中获取全局事务ID的状态，如果是cancel状态则不执行。
+
+**②**处的代码冻结库存
+
+**③**处的代码生成订单，状态为待确认
+
+**④**处的代码向幂等工具类中添加一个标记，**key**为**当前类**和**全局事务ID**，**value**为当前时间戳。
+
+![image-20231121112434293](SpringCloudAlibaba.assets/image-20231121112434293.png)
+
+**①**处的代码从幂等工具类中根据当前类和全局事务ID获取值，由于try阶段执行成功会向其中添加值，confirm方法执行成功会移出这个值，因此在confirm开头判断这个值是否存在就起到了幂等效果，防止重试的效果。
+
+**⑥**处的代码从幂等工具类中移出try方法中添加的值。
+
+**②**处的代码是从**BusinessActionContext**中获取try方法中的入参。
+
+**③**处的代码是释放掉冻结的库存
+
+**④**处的代码是修改订单的状态为已完成。
+
+> **注意：1. 开启本地事务 2. 注意返回值，返回false时将会重试**
+
+![image-20231121112450193](SpringCloudAlibaba.assets/image-20231121112450193.png)
+
+**①**处的代码是向事务日志记录表中插入一条数据，标记当前事务进入cancel方法，用来防止悬挂，这个和try方法中的**①**处的代码相呼应。
+
+**②**处的代码是为了防止幂等和空回滚，因为只有当try方法中执行成功幂等工具类中对应的当前类和全局事务ID才会存储该值。这样既防止了幂等，也防止了空回滚。
+
+**③**处的代码恢复冻结的库存。
+
+**④**处的代码删除这笔订单
+
+**⑤**处的代码是移出幂等工具类当前类和全局事务ID对应的值。
+
+###### 事务方发起
+
+调用try方法，使用@GlobalTransactional标记全局事务。
 
 ```java
-public class AccountServiceImpl implements AccountService {
-@Override
-public boolean tryTransfer(String fromAccount, String toAccount, double amount) {
-// 执行转账操作，预留转出账户金额，检查账户余额等
-// 如果成功，返回 true；如果失败，返回 false
-}
-@Override
-public boolean confirmTransfer(String fromAccount, String toAccount, double amount) {
-// 确认转账操作，将预留金额转出
-// 如果成功，返回 true；如果失败，返回 false
-}
-@Override
-public boolean cancelTransfer(String fromAccount, String toAccount, double amount) {
-// 取消转账操作，将预留金额回滚到账户
-// 如果成功，返回 true；如果失败，返回 false
-}
-}
-```
-
-- 客户端调用，先调用try，try成功，则commit，否则rollback
-
-```java
-// 获取Seata全局事务ID
-String xid = RootContext.getXID();
-// 开启全局事务
-TransactionContext context = new TransactionContext();
-context.setXid(xid);
-GlobalTransaction tx = GlobalTransactionContext.getCurrentOrCreate();
-try {
-// 调用参与者的tryTransfer方法
-	boolean tryResult = accountService.tryTransfer(fromAccount, toAccount, amount);
-	if (tryResult) {
-		// 提交全局事务
-		tx.commit();
-	} else {
-	// 回滚全局事务
-	tx.rollback();
-	}
-	} catch (Exception e) {
-// 异常时回滚全局事务tx.rollback();
+@GlobalTransactional
+public Result<Void> createOrder(Long productId,Long num,.....){
+    tccservice.tryCreate();
 }
 ```
 
@@ -1563,6 +1724,22 @@ try {
 - 如果所有的补偿操作都成功执行，则事务回滚完成。
 - 如果补偿操作也失败，需要人工介入或其他手段来解决事务的一致性问题。
 
+##### 状态机实现
+
+目前 Saga 的实现一般也两种，一种是通过事件驱动架构实现，一种是基于注解加拦截器拦截业务的正向服务实现。
+
+Seata 目前是采用事件驱动的机制来实现的，Seata 实现了一个状态机，可以编排服务的调用流程及正向服务的补偿服务，生成一个 json 文件定义的状态图，状态机引擎驱动到这个图的运行，当发生异常的时候状态机触发回滚，逐个执行补偿服务。当然在什么情况下触发回滚用户是可以自定义决定的。该状态机可以实现服务编排的需求，它支持单项选择、并发、异步、子状态机调用、参数转换、参数映射、服务执行状态判断、异常捕获等功能。
+
+该状态机引擎的基本原理是，它基于事件驱动架构，每个步骤都是异步执行的，步骤与步骤之间通过事件队列流转， 极大的提高系统吞吐量。每个步骤执行时会记录事务日志，用于出现异常时回滚时使用，事务日志会记录在与业务表所在的数据库内，提高性能。
+
+![image-20231121105912548](SpringCloudAlibaba.assets/image-20231121105912548.png)
+
+该状态机引擎分成了三层架构的设计：
+
+- 最底层是“事件驱动”层，实现了 EventBus 和消费事件的线程池，是一个 Pub-Sub 的架构
+- 第二层是“流程控制器”层，它实现了一个极简的流程引擎框架，它驱动一个“空”的流程执行，“空”的意思是指它不关心流程节点做什么事情，它只执行每个节点的 process 方法，然后执行 route 方法流转到下一个节点。这是一个通用框架，基于这两层，开发者可以实现任何流程引擎
+- 最上层是“状态机引擎”层，它实现了每种状态节点的“行为”及“路由”逻辑代码，提供 API 和状态图仓库，同时还有一些其它组件，比如表达式语言、逻辑计算器、流水生成器、拦截器、配置管理、事务日志记录等。
+
 ##### 优化
 
 Seata的Saga模式相对于传统的Saga模式，具有以下特点：
@@ -1575,68 +1752,213 @@ Seata的Saga模式相对于传统的Saga模式，具有以下特点：
 
 以下订单-扣减库存为例。
 
-定义参与者接口，实现创建和取消接口：
+###### 状态机
 
-```java
-public interface OrderService {
-boolean createOrder(String orderId, String userId, String productId, int quantity);
-boolean cancelOrder(String orderId);
-}
-public interface ProductService {
-boolean reduceStock(String productId, int quantity);
-boolean revertStock(String productId, int quantity);
+![image-20210723092711893](SpringCloudAlibaba.assets/image-20210723092711893.png)
+
+在该状态机中，清晰定义了哪里开始，哪里结束，以及失败时的补偿等等，`seata`依据此定义来实现分布式事务的控制。
+
+对应状态机文件：
+
+```json
+{
+    "Name": "reduceInventoryAndBalance",
+    "Comment": "reduce inventory then reduce balance in a transaction",
+    "StartState": "ReduceInventory",
+    "Version": "0.0.1",
+    "States": {
+        "ReduceInventory": {
+            "Type": "ServiceTask",
+            "ServiceName": "inventoryAction",
+            "ServiceMethod": "reduce",
+            "CompensateState": "CompensateReduceInventory",
+            "Next": "ChoiceState",
+            "Input": [
+                "$.[businessKey]",
+                "$.[count]"
+            ],
+            "Output": {
+                "reduceInventoryResult": "$.#root"
+            },
+            "Status": {
+                "#root == true": "SU",
+                "#root == false": "FA",
+                "$Exception{java.lang.Throwable}": "UN"
+            }
+        },
+        "ChoiceState":{
+            "Type": "Choice",
+            "Choices":[
+                {
+                    "Expression":"[reduceInventoryResult] == true",
+                    "Next":"ReduceBalance"
+                }
+            ],
+            "Default":"Fail"
+        },
+        "ReduceBalance": {
+            "Type": "ServiceTask",
+            "ServiceName": "balanceAction",
+            "ServiceMethod": "reduce",
+            "CompensateState": "CompensateReduceBalance",
+            "Input": [
+                "$.[businessKey]",
+                "$.[amount]",
+                {
+                    "throwException" : "$.[mockReduceBalanceFail]"
+                }
+            ],
+            "Output": {
+                "compensateReduceBalanceResult": "$.#root"
+            },
+            "Status": {
+                "#root == true": "SU",
+                "#root == false": "FA",
+                "$Exception{java.lang.Throwable}": "UN"
+            },
+            "Catch": [
+                {
+                    "Exceptions": [
+                        "java.lang.Throwable"
+                    ],
+                    "Next": "CompensationTrigger"
+                }
+            ],
+            "Next": "Succeed"
+        },
+        "CompensateReduceInventory": {
+            "Type": "ServiceTask",
+            "ServiceName": "inventoryAction",
+            "ServiceMethod": "compensateReduce",
+            "Input": [
+                "$.[businessKey]"
+            ]
+        },
+        "CompensateReduceBalance": {
+            "Type": "ServiceTask",
+            "ServiceName": "balanceAction",
+            "ServiceMethod": "compensateReduce",
+            "Input": [
+                "$.[businessKey]"
+            ]
+        },
+        "CompensationTrigger": {
+            "Type": "CompensationTrigger",
+            "Next": "Fail"
+        },
+        "Succeed": {
+            "Type":"Succeed"
+        },
+        "Fail": {
+            "Type":"Fail",
+            "ErrorCode": "PURCHASE_FAILED",
+            "Message": "purchase failed"
+        }
+    }
 }
 ```
 
-实现参与者逻辑：
+> 状态机文件可以使用UI工具生成。
+
+状态机属性：
+
+- Name: 表示状态机的名称，必须唯一
+- Comment: 状态机的描述
+- Version: 状态机定义版本
+- StartState: 启动时运行的第一个"状态"
+- States: 状态列表，是一个map结构，key是"状态"的名称，在状态机内必须唯一
+- IsRetryPersistModeUpdate: 向前重试时, 日志是否基于上次失败日志进行更新
+- IsCompensatePersistModeUpdate: 向后补偿重试时, 日志是否基于上次补偿日志进行更新
+
+状态属性：
+
+- Type: "状态" 的类型，比如有:
+  - ServiceTask: 执行调用服务任务
+  - Choice: 单条件选择路由
+  - CompensationTrigger: 触发补偿流程
+  - Succeed: 状态机正常结束
+  - Fail: 状态机异常结束
+  - SubStateMachine: 调用子状态机
+  - CompensateSubMachine: 用于补偿一个子状态机
+- ServiceName: 服务名称，通常是服务的beanId
+- ServiceMethod: 服务方法名称
+- CompensateState: 该"状态"的补偿"状态"
+- Loop: 标识该事务节点是否为循环事务, 即由框架本身根据循环属性的配置, 遍历集合元素对该事务节点进行循环执行
+- Input: 调用服务的输入参数列表, 是一个数组, 对应于服务方法的参数列表, $.表示使用表达式从状态机上下文中取参数，表达使用的[SpringEL](https://gitee.com/link?target=https%3A%2F%2Fdocs.spring.io%2Fspring%2Fdocs%2F4.3.10.RELEASE%2Fspring-framework-reference%2Fhtml%2Fexpressions.html), 如果是常量直接写值即可
+- Ouput: 将服务返回的参数赋值到状态机上下文中, 是一个map结构，key为放入到状态机上文时的key（状态机上下文也是一个map），value中$.是表示SpringEL表达式，表示从服务的返回参数中取值，#root表示服务的整个返回参数
+- Status: 服务执行状态映射，框架定义了三个状态，SU 成功、FA 失败、UN 未知, 我们需要把服务执行的状态映射成这三个状态，帮助框架判断整个事务的一致性，是一个map结构，key是条件表达式，一般是取服务的返回值或抛出的异常进行判断，默认是SpringEL表达式判断服务返回参数，带$Exception{开头表示判断异常类型。value是当这个条件表达式成立时则将服务执行状态映射成这个值
+- Catch: 捕获到异常后的路由
+- Next: 服务执行完成后下一个执行的"状态"
+- Choices: Choice类型的"状态"里, 可选的分支列表, 分支中的Expression为SpringEL表达式, Next为当表达式成立时执行的下一个"状态"
+- ErrorCode: Fail类型"状态"的错误码
+- Message: Fail类型"状态"的错误信息
+
+###### 状态机Bean配置
 
 ```java
-public class OrderServiceImpl implements OrderService {
-@Override
-public boolean createOrder(String orderId, String userId, String productId, int quantity) {
-// 执行订单创建逻辑，如创建订单记录、扣减用户余额等
-// 如果成功，返回 true；如果失败，返回 false
-}
-@Override
-public boolean cancelOrder(String orderId) {
-// 执行订单取消逻辑，如回滚订单记录、恢复用户余额等
-// 如果成功，返回 true；如果失败，返回 false
-}
-}
-public class ProductServiceImpl implements ProductService {
-@Override
-public boolean reduceStock(String productId, int quantity) {
-// 执行减少库存逻辑，如更新产品库存、记录库存变更日志等
-// 如果成功，返回 true；如果失败，返回 false
-}
-@Override
-public boolean revertStock(String productId, int quantity) {
-// 执行恢复库存逻辑，如恢复产品库存、删除库存变更日志等
-// 如果成功，返回 true；如果失败，返回 false}
+@Configuration
+public class StateMachineEngineConfig{
+    @Bean
+    public DbStateMachineConfig dbStateMachineConfig(DataSource dataSource){
+        DbStateMachineConfig stateMachineConfig = new DbStateMachineConfig();
+        stateMachineConfig.setDataSource(dataSource);
+        Resource resource = new ClassPathResource("statelang/reduce_inventory_and_balance.json");
+        stateMachineConfig.setResources(new Resource[]{resource});
+        stateMachineConfig.setEnableAsync(true);
+        stateMachineConfig.setThreadPoolExecutor(threadExecutor());
+        return stateMachineConfig;
+    }
+
+      @Bean
+      public StateMachineEngine stateMachineEngine(DbStateMachineConfig dbStateMachineConfig){
+          ProcessCtrlStateMachineEngine processCtrlStateMachineEngine = new ProcessCtrlStateMachineEngine();
+          processCtrlStateMachineEngine.setStateMachineConfig(dbStateMachineConfig);
+          return processCtrlStateMachineEngine;
+      }
+
+
+    @Bean
+    public StateMachineEngineHolder stateMachineEngineHolder(StateMachineEngine stateMachineEngine){
+        StateMachineEngineHolder engineHolder = new StateMachineEngineHolder();
+        engineHolder.setStateMachineEngine(stateMachineEngine);
+        return engineHolder;
+    }
+
+
+    @Bean
+    public ThreadPoolExecutor threadExecutor(){
+        ThreadPoolTaskExecutor executor = new ThreadPoolTaskExecutor();
+        //配置核心线程数
+        executor.setCorePoolSize(1);
+        //配置最大线程数
+        executor.setMaxPoolSize(20);
+        //配置队列大小
+        executor.setQueueCapacity(99999);
+        //配置线程池中的线程的名称前缀
+        executor.setThreadNamePrefix("SAGA_ASYNC_EXE_");
+
+        // 设置拒绝策略：当pool已经达到max size的时候，如何处理新任务
+        // CALLER_RUNS：不在新线程中执行任务，而是有调用者所在的线程来执行
+        executor.setRejectedExecutionHandler(new ThreadPoolExecutor.CallerRunsPolicy());
+        //执行初始化
+        executor.initialize();
+        return executor.getThreadPoolExecutor();
+    }
 }
 ```
 
-客户端调用，按照事务的逻辑顺序，依次执行正向操作，操作结果成功，则提交全局事务：
+
+
+###### 事务发起
+
+状态机bean调用。
 
 ```java
-// 获取Seata全局事务ID
-String xid = RootContext.getXID();
-// 开启全局事务
-TransactionContext context = new TransactionContext();
-context.setXid(xid);
-GlobalTransaction tx = GlobalTransactionContext.getCurrentOrCreate();
-try {
-	// 调用参与者的方法
-	boolean createOrderResult = orderService.createOrder(orderId, userId, productId, quantity);
-	boolean reduceStockResult = productService.reduceStock(productId, quantity);
-	if (createOrderResult && reduceStockResult) {
-		// 提交全局事务tx.commit();
-	} else {
-		// 回滚全局事务
-	tx.rollback();
-	}
-	} catch (Exception e) {// 异常时回滚全局事务tx.rollback();
-}
+ @Autowired
+    private StateMachineEngine stateMachineEngine;
+
+   StateMachineInstance inst = stateMachineEngine.startWithBusinessKey("reduceInventoryAndBalance", null, businessKey, startParams);
+
 ```
 
 ##### 优缺点
@@ -1672,5 +1994,87 @@ try {
 
 ### 实践经验
 
-[分布式事务 Seata Saga 模式首秀以及三种模式详解 | Meetup#3 回顾 - 掘金 (juejin.cn)](https://juejin.cn/post/6844903913691283469#heading-11)
+#### TCC 
+
+##### 业务模型拆分
+
+用户接入 TCC ，最重要的是考虑如何将自己的业务模型拆成两阶段来实现。
+
+以“扣钱”场景为例，在接入 TCC 前，对 A 账户的扣钱，只需一条更新账户余额的 SQL 便能完成；但是在接入 TCC 之后，用户就需要考虑如何将原来一步就能完成的扣钱操作，拆成两阶段，实现成三个方法，并且保证一阶段 Try 成功的话 二阶段 Confirm 一定能成功。
+
+![image-20231121105452570](SpringCloudAlibaba.assets/image-20231121105452570.png)
+
+如上图所示，Try 方法作为一阶段准备方法，需要做资源的检查和预留。在扣钱场景下，Try 要做的事情是就是检查账户余额是否充足，预留转账资金，预留的方式就是冻结 A 账户的 转账资金。Try 方法执行之后，账号 A 余额虽然还是 100，但是其中 30 元已经被冻结了，不能被其他事务使用。
+
+二阶段 Confirm 方法执行真正的扣钱操作。Confirm 会使用 Try 阶段冻结的资金，执行账号扣款。Confirm 方法执行之后，账号 A 在一阶段中冻结的 30 元已经被扣除，账号 A 余额变成 70 元 。
+
+如果二阶段是回滚的话，就需要在 Cancel 方法内释放一阶段 Try 冻结的 30 元，使账号 A 的回到初始状态，100 元全部可用。
+
+用户接入 TCC 模式，最重要的事情就是考虑如何将业务模型拆成 2 阶段，实现成 TCC 的 3 个方法，并且保证 Try 成功 Confirm 一定能成功。相对于 AT 模式，TCC 模式对业务代码有一定的侵入性，但是 TCC 模式无 AT 模式的全局行锁，TCC 性能会比 AT 模式高很多。
+
+##### 允许空回滚
+
+Cancel 接口设计时需要允许空回滚。在 Try 接口因为丢包时没有收到，事务管理器会触发回滚，这时会触发 Cancel 接口，这时 Cancel 执行时发现没有对应的事务 xid 或主键时，需要返回回滚成功。让事务服务管理器认为已回滚，否则会不断重试，而 Cancel 又没有对应的业务数据可以进行回滚。
+
+##### 防悬挂
+
+悬挂的意思是：Cancel 比 Try 接口先执行，出现的原因是 Try 由于网络拥堵而超时，事务管理器生成回滚，触发 Cancel 接口，而最终又收到了 Try 接口调用，但是 Cancel 比 Try 先到。按照前面允许空回滚的逻辑，回滚会返回成功，事务管理器认为事务已回滚成功，则此时的 Try 接口不应该执行，否则会产生数据不一致。
+
+所以在 Cancel 空回滚返回成功之前先记录该条事务 xid 或业务主键，标识这条记录已经回滚过，Try 接口先检查这条事务xid或业务主键如果已经标记为回滚成功过，则不执行 Try 的业务操作。
+
+##### 幂等控制
+
+幂等性的意思是：对同一个系统，使用同样的条件，一次请求和重复的多次请求对系统资源的影响是一致的。因为网络抖动或拥堵可能会超时，事务管理器会对资源进行重试操作，所以很可能一个业务操作会被重复调用，为了不因为重复调用而多次占用资源，需要对服务设计时进行幂等控制。
+
+通常可以用事务 xid 或业务主键判重来控制。
+
+#### Saga
+
+Saga 模式下分布式事务通常是由事件驱动的，各个参与者之间是异步执行的，Saga 模式是一种长事务解决方案。
+
+##### 允许空补偿
+
+和TCC类似，Saga的正向服务与反向服务也需求遵循空补偿原则。
+
+空补偿：原服务未执行，补偿服务执行了
+
+出现原因：
+
+- 原服务 超时（丢包）
+- Saga 事务触发 回滚
+- 未收到 原服务请求，先收到 补偿请求
+
+所以服务设计时需要允许空补偿, 即没有找到要补偿的业务主键时返回补偿成功并将原业务主键记录下来。
+
+##### 防悬挂
+
+和TCC类似，Saga的正向服务与反向服务也需求遵循防悬挂原则。
+
+##### 幂等控制
+
+和TCC类似，Saga的正向服务与反向服务也需求遵循幂等控制原则。
+
+悬挂：补偿服务 比 原服务 先执行
+
+出现原因：
+
+- 原服务 超时（拥堵）
+- Saga 事务回滚，触发 回滚
+- 拥堵的 原服务 到达
+
+所以要检查当前业务主键是否已经在空补偿记录下来的业务主键中存在，如果存在则要拒绝服务的执行。
+
+原服务与补偿服务都需要保证幂等性, 由于网络可能超时, 可以设置重试策略，重试发生时要通过幂等控制避免业务数据重复更新。
+
+##### 自定义事务恢复策略
+
+Saga 模式不保证事务的隔离性，在极端情况下可能出现脏写。比如在分布式事务未提交的情况下，前一个服务的数据被修改了，而后面的服务发生了异常需要进行回滚，可能由于前面服务的数据被修改后无法进行补偿操作。
+
+这就是缺乏隔离性造成的典型的问题, 实践中一般的应对方法是：
+
+- 业务流程设计时遵循“宁可长款, 不可短款”的原则, 长款意思是客户少了钱机构多了钱, 以机构信誉可以给客户退款, 反之则是短款, 少的钱可能追不回来了。所以在业务流程设计上一定是先扣款。
+
+- “重试”继续往前完成这个分布式事务，有些业务场景可以允许让业务最终成功，用户可以根据业务特点配置该流程的事务处理策略是优先“回滚”还是“重试”，当事务超时的时候，Server 端会根据这个策略不断进行重试。
+
+  在回滚不了的情况下可以继续重试完成后面的流程, 所以状态机引擎除了提供“回滚”能力还需要提供“向前”恢复上下文继续执行的能力, 让业务最终执行成功, 达到最终一致性的目的。
 
