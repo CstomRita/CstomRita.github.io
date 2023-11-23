@@ -38,9 +38,11 @@ JUC框架包括五个部分：
 
 ![image](JUC.assets/java-thread-x-juc-overview-2.png)
 
-### ConcurrentHashMap
+### Map
 
-#### jdk 1.7
+#### ConcurrentHashMap
+
+##### jdk 1.7
 
 从结构上说，1.7版本的ConcurrentHashMap采用分段锁机制，里面包含一个Segment数组，Segment继承于ReentrantLock，Segment则包含HashEntry的数组，HashEntry本身就是一个链表的结构，具有保存key、value的能力能指向下一个节点的指针。
 
@@ -48,7 +50,7 @@ JUC框架包括五个部分：
 
 ![1.7ConcurrentHashMap示意图](JUC.assets/collection-31.png)
 
-#### jdk1.8
+##### jdk1.8
 
 jdk1.8实现线程安全不是在数据结构上下功夫，它的数据结构和HashMap是一样的，数组+链表+红黑树。
 
