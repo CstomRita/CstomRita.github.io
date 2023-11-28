@@ -1,6 +1,7 @@
 - [根目录](/README)
 - 基础篇
-  - [集合类](/编程语言/Java/Java集合.md)
+  - [集合](/编程语言/Java/Java集合.md)
+  - [机制](/编程语言/Java/Java机制.md)
 - JVM篇
   - [类加载](/编程语言/Java/JVM内存模型.md)
   - [JVM和Java内存模型](/编程语言/Java/JVM内存模型2.md)
