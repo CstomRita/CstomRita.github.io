@@ -337,7 +337,7 @@ spring.factories被加载到Spring的时机为，所有的扫描结束后进行�
 
 3.当扫描结束，开始解析到@Import(AutoConfigurationImportSelector.class)，由于他是延迟加载，所以在所有的扫描结束后才会去执行selectImports，然后将方法返回值去解析每个值都会去执行processImports方法。
 
-### Spring Factories
+### ❗️Spring Factories机制
 
 Spring Boot自动装配的这套机制，也称为Spring Factories机制。
 
@@ -487,7 +487,7 @@ org.springframework.boot.env.YamlPropertySourceLoader
 
 > [!Note]
 >
-> ```text
+> 
 > -------------------创建springbootApplication对象---------------------------------------
 > springboot在创建SpringApplicaiton实例的时候，对Springboot容器初始化操作，主要做了四个事情：
 > 1. 获取当前应用的启动类型。
@@ -514,7 +514,7 @@ org.springframework.boot.env.YamlPropertySourceLoader
 > 11. stopWatch.stop();结束计时
 > 12. 使用广播和回调机制告诉监听者springboot容器已经启动化成功，可以运行;
 > 13. 返回上下文
-> ```
+> 
 
 ### 创建SpringApplication实例
 
