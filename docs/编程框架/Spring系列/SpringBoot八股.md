@@ -39,3 +39,19 @@ SpringBoot的自动装配主要是依赖@EnableAutoConfiguration注解实现的�
 
 最后，SpringBoot会启动应用程序本身，启动相应的线程进行服务处理。
 
+## 使用
+
+### SpringBoot配置文件的优先级？
+
+
+
+### application.yml与bootstrap.yml的区别？
+
+
+
+### 有哪些常用的SpringBootStarter？
+
+
+
+
+
