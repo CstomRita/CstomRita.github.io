@@ -1280,13 +1280,459 @@ Redis 1主4从，5个哨兵，哨兵配置quorum为2，如果3个哨兵故障，
 
 > 主从复制和哨兵机制保障了高可用，就读写分离而言虽然slave节点扩展了主从的读并发能力，但是**写能力**和**存储能力**是无法进行扩展，就只能是master节点能够承载的上限。
 >
-> 如果面对海量数据那么必然需要构建master（主节点分片)之间的集群，同时必然需要吸收高可用（主从复制和哨兵机制）能力，即每个master分片节点还需要有slave节点，这是分布式系统中典型的纵向扩展（集群的分片技术）的体现；在 Redis 3.0版本中对应的设计就是Redis Cluster
+> 如果面对海量数据那么必然需要构建master（主节点分片)之间的集群，同时必然需要吸收高可用（主从复制和哨兵机制）能力，即每个master分片节点还需要有slave节点，这是分布式系统中典型的纵向扩展（集群的分片技术）的体现。
 >
-> 因此，Redis集群同事满足了高可用和可拓展的特性。
+> 在 Redis 3.0版本中对应的设计就是Redis Cluster
+>
+> 因此，Redis Cluster方案同时满足了高可用和可拓展的特性。
 
-### 配置
+### 使用
+
+#### 配置Demo
+
+##### 架构
+
+假定，3台服务器，每台服务器开启2台实例构建基础主从，共6个Redis实例，三主三从。
+
+> 根据官方：要让集群正常运作至少需要三个主节点，不过在刚开始试用集群功能时， 强烈建议使用六个节点： 其中三个为主节点， 而其余三个则是各个主节点的从节点。
+
+##### 配置文件
+
+> [!ATTENTION]
+>
+> 注意！Redis普通服务会有2套配置文件，一套为普通服务配置文件，一套为集群服务配置文件。
+>
+> Cluster模式下书写的集群配置文件
+
+在`/data/redis/redisConf`目录下创建创建节点所需要的配置文件
+
+```yaml
+# 修改为后台启动
+daemonize yes
+# 修改端口号
+port 8001
+# 指定数据文件存储位置
+dir /usr/local/redis/8001/
+# 开启集群模式
+cluster-enabled yes
+# 集群节点信息文件配置
+cluster-config-file nodes-8001.conf
+# 集群节点超时间
+cluster-node-timeout 15000
+# 去掉bind绑定地址
+# bind 127.0.0.1 -::1 (这里没写错就是加#注释掉bind配置)
+# 关闭保护模式
+protected-mode no
+# 开启aof模式持久化
+appendonly yes
+# 设置连接Redis需要密码123（选配）
+requirepass 123456
+# 设置Redis节点与其他节点之间访问需要密码123（选配）
+masterauth 123456
+```
+
+- cluster-enabled yes
+
+如果配置yes则开启集群功能，此redis实例作为集群的一个节点，否则，它是一个普通的单一的redis实例。
+- cluster-config-file nodes-8001.conf
+
+虽然此配置的名字叫"集群配置文件"，但是此配置文件不能人工编辑，它是集群节点自动维护的文件，主要用于记录集群中有哪些节点、他们的状态以及一些持久化参数等，方便在重启时恢复这些状态。通常是在收到请求之后这个文件就会被更新。
+- cluster-node-timeout 15000
+
+这是集群中的节点能够失联的最大时间，超过这个时间，该节点就会被认为故障。如果主节点超过这个时间还是不可达，则用它的从节点将启动故障迁移，升级成主节点。注意，任何一个节点在这个时间之内如果还是没有连上大部分的主节点，则此节点将停止接收任何请求。一般设置为15秒即可。
+- cluster-slave-validity-factor 10
+
+如果设置成０，则无论从节点与主节点失联多久，从节点都会尝试升级成主节点。如果设置成正数，则cluster-node-timeout乘以cluster-slave-validity-factor得到的时间，是从节点与主节点失联后，此从节点数据有效的最长时间，超过这个时间，从节点不会启动故障迁移。
+
+假设cluster-node-timeout=5，cluster-slave-validity-factor=10，则如果从节点跟主节点失联超过50秒，此从节点不能成为主节点。注意，如果此参数配置为非0，将可能出现由于某主节点失联却没有从节点能顶上的情况，从而导致集群不能正常工作，在这种情况下，只有等到原来的主节点重新回归到集群，集群才恢复运作。
+
+- cluster-migration-barrier 1
+
+主节点需要的最小从节点数，只有达到这个数，主节点失败时，它从节点才会进行迁移。更详细介绍可以看本教程后面关于副本迁移到部分。
+
+- cluster-require-full-coverage yes
+
+在部分key所在的节点不可用时，如果此参数设置为"yes"(默认值), 则整个集群停止接受操作；如果此参数设置为”no”，则集群依然为可达节点上的key提供读操作。
+
+##### 启动redis
+
+执行以下命令进行服务启动：
+
+```shell
+$ redis-server /usr/local/redis/conf/redis.cnf
+```
+
+在启动集群时，会按照Redis服务配置文件的配置项判断是否启动集群模式，如图所示：
+
+![image-20210401221228929](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20210401221228929.png)
+
+现在虽然说每个服务都成功启动了，但是彼此之间并没有任何联系。所以下一步要做的就是将6个服务加入至一个集群。
+
+##### 加入集群
+
+在任意一台机器上执行如下命令，即可创建集群。
+
+Redis会随机分配主从机器，并且在分配的时Redis是不会让主节点与从节点在同一台机器上的。
+
+```shell
+# -a 密码认证，若没写密码无效带这个参数
+# --cluster create 创建集群实例列表 IP:PORT IP:PORT IP:PORT
+# --cluster-replicas 复制因子1（即每个主节点需1个从节点）
+./bin/redis-cli -a 123456 --cluster create --cluster-replicas 1 192.168.100.101:8001 192.168.100.101:8002 192.168.100.102:8003 192.168.100.102:8004 192.168.100.103:8005 192.168.100.103:8006
+```
+
+![image-20231213145832633](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20231213145832633.png)
+
+##### 链接集群
+
+```shell
+# -a 密码认证
+# -c 连接集群
+# -h 集群中任意一个Redis节点IP
+# -p 集群中任意一个Redis节点端口
+./bin/redis-cli -a 123456 -c -h 192.168.100.101 -p 8001
+```
+
+#### cluster 命令
+
+##### 集群
+- cluster info  
 
 
+打印集群的信息
+
+> 127.0.0.1:8001> cluster info
+>
+> cluster_state:ok       # 如果当前redis发现有failed的slots，默认为把自己cluster_state从ok个性为fail, 写入命令会失败。如果设置cluster-require-full-coverage为no,则无此限制。
+> cluster_slots_assigned:16384  #已分配的槽
+> cluster_slots_ok:16384        #槽的状态是ok的数目
+> cluster_slots_pfail:0           #可能失效的槽的数目
+> cluster_slots_fail:0            #已经失效的槽的数目
+> cluster_known_nodes:6       #集群中节点个数
+> cluster_size:3                #集群中设置的分片个数
+> cluster_current_epoch:15      #集群中的currentEpoch总是一致的,currentEpoch越高，代表节点的配置或者操作越新,集群中最大的那个node epoch
+> cluster_my_epoch:12         #当前节点的config epoch，每个主节点都不同，一直递增, 其表示某节点最后一次变成主节点或获取新slot所有权的逻辑时间.
+> cluster_stats_messages_sent:270782059
+> cluster_stats_messages_received:270732696
+
+- cluster nodes 
+
+
+列出集群当前已知的所有节点，以及这些节点的相关信息  
+
+> 127.0.0.1:8001> cluster nodes
+> 25e8c9379c3db621da6ff8152684dc95dbe2e163 192.168.64.102:8002 master - 0 1490696025496 15 connected 5461-10922
+>
+> d777a98ff16901dffca53e509b78b65dd1394ce2 192.168.64.156:8001 slave 0b1f3dd6e53ba76b8664294af2b7f492dbf914ec 0 1490696027498 12 connected
+>
+> 8e082ea9fe9d4c4fcca4fbe75ba3b77512b695ef 192.168.64.108:8000 master - 0 1490696025997 14 connected 0-5460
+>
+> 0b1f3dd6e53ba76b8664294af2b7f492dbf914ec 192.168.64.170:8001 myself,master - 0 0 12 connected 10923-16383
+>
+> eb8adb8c0c5715525997bdb3c2d5345e688d943f 192.168.64.101:8002 slave 25e8c9379c3db621da6ff8152684dc95dbe2e163 0 1490696027498 15 connected
+>
+> 4000155a787ddab1e7f12584dabeab48a617fc46 192.168.67.54:8000 slave 8e082ea9fe9d4c4fcca4fbe75ba3b77512b695ef 0 1490696026497 14 connected
+>
+> 说明
+>
+> - 节点ID：例如25e8c9379c3db621da6ff8152684dc95dbe2e163
+> - ip:port：节点的ip地址和端口号，例如192.168.64.102:8002
+> - flags：节点的角色(master,slave,myself)以及状态(pfail,fail)，如果节点是一个从节点的话，那么跟在flags之后的将是主节点的节点ID，例如192.168.64.156:8001主节点的ID就是0b1f3dd6e53ba76b8664294af2b7f492dbf914ec
+> - 集群最近一次向节点发送ping命令之后，过了多长时间还没接到回复
+> - 节点最近一次返回pong回复的时间
+> - 节点的配置纪元(config epoch)
+> - 本节点的网络连接情况
+> - 节点目前包含的槽，例如192.168.64.102:8002目前包含的槽为5461-10922
+>
+> ![image-20231213151545683](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20231213151545683.png)
+
+##### 节点(node)  
+
+- cluster meet <ip> <port>    
+
+将ip和port所指定的节点添加到集群当中，让它成为集群的一份子  
+
+- cluster forget <node_id>     
+
+从集群中移除node_id指定的节点
+
+- cluster replicate <node_id>  
+
+将当前节点设置为node_id指定的节点的从节点
+
+- cluster saveconfig          
+
+将节点的配置文件保存到硬盘里面
+
+- cluster slaves <node_id>   
+
+ 列出该slave节点的master节点
+
+- cluster set-config-epoch     
+
+强制设置configEpoch 
+
+##### 槽(slot)  
+
+- cluster addslots <slot> [slot ...]             
+
+将一个或多个槽(slot)指派(assign)给当前节点
+
+- cluster delslots <slot> [slot ...]              
+
+移除一个或多个槽对当前节点的指派 
+
+- cluster flushslots                        
+
+ 移除指派给当前节点的所有槽，让当前节点变成一个没有指派任何槽的节点 
+
+- cluster setslot <slot> node <node_id>      
+
+ 将槽slot指派给node_id指定的节点，如果槽已经指派给另一个节点，那么先让另一个节点删除该槽，然后再进行指派 
+
+- cluster setslot <slot> migrating <node_id>  
+
+将本节点的槽slot迁移到node_id指定的节点中  
+
+- cluster setslot <slot> importing <node_id>  
+
+从node_id 指定的节点中导入槽slot到本节点 
+
+- cluster setslot <slot> stable               
+
+取消对槽slot的导入(import)或者迁移(migrate) 
+
+##### 键(key)  
+
+- cluster keyslot <key>                    
+
+计算键key应该被放置在哪个槽上  
+
+- cluster countkeysinslot <slot>             
+
+返回槽slot目前包含的键值对数量 
+
+- cluster getkeysinslot <slot> <count>        
+
+返回count个slot槽中的键
+
+##### 其它
+
+- cluster myid    
+
+返回节点的ID
+
+- cluster slots    
+
+返回节点负责的slot
+
+- cluster reset    
+
+重置集群，慎用
+
+#### 集群运维
+
+##### 新增主节点
+
+###### 加入集群
+
+```shell
+# 使用如下命令即可添加节点将一个新的节点添加到集群中
+# -a 密码认证(没有密码不用带此参数)
+# --cluster add-node 添加节点 新节点IP:新节点端口 任意存活节点IP:任意存活节点端口
+./bin/redis-cli -a 123456 --cluster add-node 192.168.100.104:8007 192.168.100.101:8001
+```
+
+![image-20231213151915289](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20231213151915289.png)
+
+使用`cluster nodes`命令查看集群信息表，可以看到8007已经被添加到了新的集群中了，但是8007并且没有任何的槽位信息，这时就需要迁移槽位。
+
+![image-20231213152022511](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20231213152022511.png)
+
+###### 迁移槽位
+
+```shell
+# 使用如下命令将其它主节点的分片迁移到当前节点中
+# -a 密码认证(没有密码不用带此参数)
+# --cluster reshard 槽位迁移 从节点IP:节点端口，中迁移槽位到当前节点中
+./bin/redis-cli --cluster reshard 192.168.100.101:8002
+```
+
+执行该命令后，会以输入的方式要求输入：
+
+- 给哪个节点迁移
+- 迁移多少槽位
+
+![image-20231213152203692](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20231213152203692.png)
+
+##### 增加从节点
+
+###### 加入集群
+
+```shell
+# 使用如下命令即可添加节点将一个新的节点添加到集群中
+# -a 密码认证(没有密码不用带此参数)
+# --cluster add-node 添加节点 新节点IP:新节点端口 任意存活节点IP:任意存活节点端口
+./bin/redis-cli -a 123456 --cluster add-node 192.168.100.104:8008 192.168.100.101:8001
+```
+
+###### 从节点配置
+
+在新增的从节点上，设置为跟随哪个主节点。
+
+客户端命令连接到刚刚新添加的8008节点的上，并且为他设置一个主节点，设置完毕后再次查看节点信息，可以看到8008已经是8007的从节点了。
+
+```shell
+# 连接需设为从节点的Redis服务
+./bin/redis-cli -a 123456 -p 8008
+# 将当前节点分配为 8cf44439390dc9412813ad27c43858a6bb53365c 的从节点
+CLUSTER REPLICATE 8cf44439390dc9412813ad27c43858a6bb53365c
+```
+
+![image-20231213152619657](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20231213152619657.png)
+
+##### 删除主节点
+
+主节点删除就那么首先需要对槽进行迁移，如当前需要移除8007节点，那么首先需要把8007的节点槽位移动到别的节点中，才能删除。
+
+###### 迁移槽位
+
+把要删除的槽位迁移到其他节点上。
+
+![image-20231213152739888](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/image-20231213152739888.png)
+
+###### 删除主节点
+
+```shell
+# 执行如下命令删除节点
+# -a 密码认证(没有密码不用带此参数)
+# --cluster del-node 连接任意一个存活的节点IP:连接任意一个存活的节点端口 要删除节点ID 
+./bin/redis-cli -a 123456 --cluster del-node 192.168.100.101:8002 8cf44439390dc9412813ad27c43858a6bb53365c
+```
+
+##### 删除从节点
+
+从节点删除比较简单，直接删除即可，现在要删除8008节点。
+
+```shell
+# -a 密码认证(没有密码不用带此参数)
+# --cluster del-node 连接任意一个存活的节点IP:连接任意一个存活的节点端口 要删除节点ID 
+./bin/redis-cli -a 123456 --cluster del-node 192.168.100.104:8008 71cb4fe842e83252f0ffabdc2b31eddb98fd4c89
+```
+
+##### 重新分配槽位
+
+`重新分配槽位慎用！！！`，该功能可以让着集群的槽位重新平均分配但是由于涉及到槽位大量迁移会导致整个Redis阻塞停止处理客户端的请求。
+
+```shell
+# -a 密码认证(没有密码不用带此参数)
+# --cluster rebalance 重新分配集群中的槽位
+./bin/redis-cli -a 123456 --cluster rebalance 192.168.100.101:8002
+```
+
+#### SpringBoot集成
+
+##### pom
+
+```xml
+        <!--springboot中的redis依赖-->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+        <!-- lettuce pool 缓存连接池-->
+        <dependency>
+            <groupId>org.apache.commons</groupId>
+            <artifactId>commons-pool2</artifactId>
+        </dependency>
+```
+
+##### 配置文件
+
+```yml
+#端口，项目上下文
+server:
+  port: 8080
+  servlet:
+    context-path: /redis-demo
+
+spring:
+  redis:
+#    host: 192.168.223.131
+#    port: 7001
+    password: admin@2021
+    # Redis 默认数据库设置
+    database: 0
+    # Redis Cluster集群节点配置
+    cluster:
+      # Redis 集群地址信息
+      nodes:
+        - 192.168.223.131:7001
+        - 192.168.223.131:7002
+        - 192.168.223.131:7003
+        - 192.168.223.131:7004
+        - 192.168.223.131:7005
+        - 192.168.223.131:7006
+      # 获取失败 最大重定向次数
+      max-redirects: 3
+    #如果用以前的jedis，可以把下面的lettuce换成jedis即可
+    lettuce:
+      pool:
+        # 连接池最大连接数默认值为8
+        max-active: 1000
+        # 连接池最大阻塞时间（使用负值表示没有限制）默认值为-1
+        max-wait: -1
+        # 连接池中最大空闲连接数默认值为8
+        max-idle: 10
+        # 连接池中的最小空闲连接数，默认值为0
+        min-idle: 10
+```
+
+##### RedisConfig类
+
+```java
+package com.demo.config;
+
+import org.springframework.cache.annotation.CachingConfigurerSupport;
+import org.springframework.cache.interceptor.KeyGenerator;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
+import org.springframework.data.redis.serializer.Jackson2JsonRedisSerializer;
+
+import java.util.Arrays;
+
+
+@Configuration
+public class RedisConfig extends CachingConfigurerSupport {
+
+    @Bean
+    public RedisTemplate<String, Object>  redisTemplate(RedisConnectionFactory redisConnectionFactory) {
+        RedisTemplate<String, Object>  template = new RedisTemplate<>();
+        template.setConnectionFactory(redisConnectionFactory);
+        //对象的序列化，GenericJackson2JsonRedisSerializer实现了RedisSerializer接口
+        GenericJackson2JsonRedisSerializer serializer = new GenericJackson2JsonRedisSerializer();
+        template.setDefaultSerializer(serializer);
+        return template;
+    }
+
+    /**
+     * 重写key的生成策略，用【类名+方法名+参数名】这样就可以保证key不为空
+     * @return
+     */
+    @Bean
+    @Override
+    public KeyGenerator keyGenerator() {
+        return (target, method, objects) -> {
+            StringBuilder sb = new StringBuilder();
+            sb.append(target.getClass().getName()).append(".").append(method.getName()).append(Arrays.toString(objects));
+            return sb.toString();
+        };
+    }
+}
+```
 
 ### 原理
 
