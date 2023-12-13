@@ -1736,7 +1736,9 @@ public class RedisConfig extends CachingConfigurerSupport {
 
 ### 原理
 
+#### 分片机制
 
+  
 
 
 
