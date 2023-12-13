@@ -1736,11 +1736,282 @@ public class RedisConfig extends CachingConfigurerSupport {
 
 ### 原理
 
-#### 分片机制
+#### 分片/分区机制（可拓展）
 
-  
+##### 分布式分区方法
+
+>  [!note]在分布式理论中，分区方法包含多种，范围分片、哈希分区、一致性哈希等等，详细可见分布式理论。
+>
+> 在Redis Cluster中采用的分区技术叫做虚拟槽分区，可以算上面虚拟一致性哈希分区的变种，在本章节重点关注虚拟槽分区。
+>
+> 以前思想有个误区，以为Redis中具有范围分区、哈希分区等等分区手段，其实这个都是分布式系统中的理论技术。如果自行搭建多个Redis + 实现客户端/代理中间件分区算法的话，可以选择这些技术，但这样工作量极大。如果是使用Redis Cluster成熟方案，分区技术即只有虚拟槽分区这一种。
+
+- 节点取余分区
+
+使用特定的数据，如Redis的键或用户ID，再根据节点数量N使用公式:
+hash(key)%N计算出哈希值，用来决定数据映射到哪一个节点上。这种方案存在一个问题:当节点数量变化时，如扩容或收缩节点，数据节点映射关系需要重新计算，会导致数据的重新迁移。
+
+这种方式的突出优点是简单性，常用于数据库的分库分表规则，一般采用预分区的方式，提前根据数据量规划好分区数，比如划分为512或1024张表，保证可支撑未来一段时间的数据量,再根据负载情况将表迁移到其他数据库中。扩容时通常采用翻倍扩容，避免数据映射全部被打乱导致全量迁移的情况。
+
+- 一致性哈希分区
+
+一致性哈希分区（ Distributed Hash Table)实现思路是为系统中每个节点分配一个 token,范围一般在0~23，这些token构成一个哈希环。数据读写执行节点查找操作时，先根据key计算hash值，然后顺时针找到第一个大于等于该哈希值的token节点。例如：
+
+集群中有三个节点（Node1、Node2、Node3），五个键（key1、key2、key3、key4、key5），其路由规则为：
+
+![image.png](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/bab557dc5d9c4932bc2682481a50e8b7.png)
+
+当集群中增加节点时，比如当在Node2和Node3之间增加了一个节点Node4，此时再访问节点key4时，不能在Node4中命中，更一般的，介于Node2和Node4之间的key均失效，这样的失效方式太过于“集中”和“暴力”，更好的方式应该是“平滑”和“分散”地失效。
+
+![image.png](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/9de42d7a40a94ca5ba61daff1d0cd894.png)
+
+这种方式相比节点取余最大的好处在于加入和删除节点只影响哈希环中相邻的节点，对其他节点无影响。但一致性哈希分区存在几个问题:
+
+1、当使用少量节点时，节点变化将大范围影响哈希环中数据映射，因此这种方式不适合少量数据节点的分布式方案。
+
+2、增加节点只能对下一个相邻节点有比较好的负载分担效果，例如上图中增加了节点Node4只能够对Node3分担部分负载，对集群中其他的节点基本没有起到负载分担的效果；类似地，删除节点会导致下一个相邻节点负载增加，而其他节点却不能有效分担负载压力。
+
+正因为一致性哈希分区的这些缺点，一些分布式系统采用虚拟槽对一致性哈希进行改进，比如虚拟一致性哈希分区。
+
+- 虚拟一致性哈希分区
+
+为了在增删节点的时候，各节点能够保持动态的均衡，将每个真实节点虚拟出若干个虚拟节点，再将这些虚拟节点随机映射到环上。此时每个真实节点不再映射到环上，真实节点只是用来存储键值对，它负责接应各自的一组环上虚拟节点。当对键值对进行存取路由时，首先路由到虚拟节点上，再由虚拟节点找到真实的节点。
+
+如下图所示，三个节点真实节点：Node1、Node2和Node3，每个真实节点虚拟出三个虚拟节点：X#V1、X#V2和X#V3，这样每个真实节点所负责的hash空间不再是连续的一段，而是分散在环上的各处，这样就可以将局部的压力均衡到不同的节点，虚拟节点越多，分散性越好，理论上负载就越倾向均匀。
+
+![image.png](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/70c7b32ede304da4bf8498c39e836bc1.png)
+
+##### 虚拟槽分区
+
+###### 槽
+
+槽Slot是集群内数据管理和迁移的基本单位，主要目的是为了方便数据拆分和集群扩展，每个节点会负责一定数量的槽。
+
+###### 槽和key值
+
+根据key值计算，该key应该存放在哪个槽：
+
+`slot=CRC16(key) &16383`
+
+![image.png](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/a3a1240b7e74478abba33cd4a6e5821d.png)
+
+###### 槽的个数
+
+通过上面的哈希函数，也可以看出来RedisCluster槽范围是0 ～16383。
+
+为什么槽的范围是0 ～16383，也就是说槽的个数在16384个？redis的作者在github上有个回答：[https://github.com/redis/redis/issues/2576](https://github.com/redis/redis/issues/2576)
+
+![image.png](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/1d9939c506b34a9aa5cd004fb83c34c7.png)
+
+在ping/pong中，需要携带一定数量的其他节点信息用于交换，节点数量越多，消息体内容越大，内部通信占有的带宽也就越大，因此节点数量不能过多，不建议redis cluster节点数量超过1000个。
+
+在redis节点发送心跳包时需要把所有的槽放到这个心跳包里，以便让节点知道当前集群信息，16384=16k，在发送心跳包时使用char进行bitmap压缩后是:16384 ÷8÷1024=2k，也就是说可以使用2k的空间创建了16k的槽数。如果槽数过大，ping消息的消息头太大了，浪费带宽。
+
+虽然使用CRC16算法最多可以分配65535（2^16-1）个槽位，65535=65k，压缩后就是8k，也就是说需要需要8k的心跳包，作者认为这样做不太值得。同时，对于节点数在1000以内的redis cluster集群，16384个槽位够用了，可以以确保每个 master 有足够的插槽，没有必要。
+
+###### 槽和节点
+
+每个节点会负责一定数量的槽。
+
+比如集群有3个节点，则每个节点平均大约负责5460个槽。
+
+![image.png](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/d8360eb94ffc458294f0f003a7f94380.png)
+
+##### Redis 虚拟槽分区的特点
+
+1、解耦数据和节点之间的关系,简化了节点扩容和收缩难度。
+
+2、节点自身维护槽的映射关系，不需要客户端或者代理服务维护槽分区元数据。口支持节点、槽、键之间的映射查询,用于数据路由、在线伸缩等场景。
+
+#### 节点通信
+
+##### Gossip协议
+
+Redis 集群是去中心化的，彼此之间状态同步靠 gossip 协议通信。
+
+Gossip协议的最大的好处是，**即使集群节点的数量增加，每个节点的负载也不会增加很多，几乎是恒定的。**
+
+GOSSIP集群的消息有以下几种类型：
+
+- `Meet` 通过「cluster meet ip port」命令，已有集群的节点会向新的节点发送邀请，加入现有集群。
+- `Ping` 节点每秒会向集群中其他节点发送 ping 消息，消息中带有自己已知的两个节点的地址、槽、状态信息、最后一次通信时间等。
+- `Pong` 节点收到 ping 消息后会回复 pong 消息，消息中同样带有自己已知的两个节点信息。
+- `Fail` 节点 ping 不通某节点后，会向集群所有节点广播该节点挂掉的消息。其他节点收到消息后标记已下线。
+
+##### 消息格式
+
+所有的消息格式划分为：消息头和消息体。
+
+###### 消息头
+
+集群内所有的消息都采用相同的消息头结构`clusterMsg`，它包含了发送节点关键信息，如节点id、槽映射、节点标识(主从角色，是否下线）等。消息头包含发送节点自身状态数据，接收节点根据消息头就可以获取到发送节点的相关数据。
+
+###### 消息体
+
+消息体在Redis内部采用`clusterMsg Data` 结构声明，定义发送消息的数据。
+
+一共有四类，其中ping、meet、pong都采用clusterMsgDataGossip结构来表示。
+
+```c
+typedef struct {
+    // 节点的名字
+    // 在刚开始的时候，节点的名字会是随机的
+    // 当 MEET 信息发送并得到回复之后，集群就会为节点设置正式的名字
+    char nodename[REDIS_CLUSTER_NAMELEN];
+    // 最后一次向该节点发送 PING 消息的时间戳
+    uint32_t ping_sent;
+    // 最后一次从该节点接收到 PONG 消息的时间戳
+    uint32_t pong_received;
+    // 节点的 IP 地址
+    char ip[REDIS_IP_STR_LEN];    /* IP address last time it was seen */
+    // 节点的端口号
+    uint16_t port;  /* port last time it was seen */
+    // 节点的标识值
+    uint16_t flags;
+    // 对齐字节，不使用
+    uint32_t notused; /* for 64 bit alignment */
+} clusterMsgDataGossip;
+ 
+typedef struct {
+    // 下线节点的名字
+    char nodename[REDIS_CLUSTER_NAMELEN];
+} clusterMsgDataFail;
+ 
+typedef struct {
+    // 频道名长度
+    uint32_t channel_len;
+    // 消息长度
+    uint32_t message_len;
+    // 消息内容，格式为 频道名+消息
+    // bulk_data[0:channel_len-1] 为频道名
+    // bulk_data[channel_len:channel_len+message_len-1] 为消息
+    unsigned char bulk_data[8]; /* defined as 8 just for alignment concerns. */
+} clusterMsgDataPublish;
+ 
+typedef struct {
+    // 节点的配置纪元
+    uint64_t configEpoch; /* Config epoch of the specified instance. */
+    // 节点的名字
+    char nodename[REDIS_CLUSTER_NAMELEN]; /* Name of the slots owner. */
+    // 节点的槽布局
+    unsigned char slots[REDIS_CLUSTER_SLOTS/8]; /* Slots bitmap. */
+} clusterMsgDataUpdate;
+ 
+union clusterMsgData {
+    /* PING, MEET and PONG */
+    struct {
+        /* Array of N clusterMsgDataGossip structures */
+        clusterMsgDataGossip gossip[1];
+    } ping;
+    /* FAIL */
+    struct {
+        clusterMsgDataFail about;
+    } fail;
+    /* PUBLISH */
+    struct {
+        clusterMsgDataPublish msg;
+    } publish;
+    /* UPDATE */
+    struct {
+        clusterMsgDataUpdate nodecfg;
+    } update;
+};
+```
+
+##### ping/pong
+
+Redis节点会记录其向每一个节点上一次发出ping和收到pong的时间，心跳发送时机与这两个值有关。
+
+通过下面的方式既能保证及时更新集群状态，又不至于使心跳数过多：
+
+- 集群内每个节点维护定时任务默认间隔1秒，每秒执行10次，定时任务里每秒随机选取5个节点，找出最久没有通信的节点发送ping消息，用于保证 Gossip信息交换的随机性
+- 同时每100毫秒都会扫描本地节点列表，如果发现节点最近一次接受pong消息的时间大于cluster_node_timeout/2，则立刻发送ping消息，防止该节点信息太长时间未更新。
+
+- 收到ping或meet，立即回复pong
+
+相关的参数`cluster_node_timeout`
+
+`cluster_node_timeout`参数对消息发送的节点数量影响非常大。当带宽资源紧张时，可以适当调大这个参数，如从默认15秒改为30秒来降低带宽占用率。过度调大`cluster_node_timeout `会影响消息交换的频率从而影响故障转移、槽信息更新、新节点发现的速度。因此需要根据业务容忍度和资源消耗进行平衡。
+
+##### meet
+
+新节点加入时，处理过程如下：
+
+- 发送meet包加入集群
+- 从pong包中的gossip得到未知的其他节点
+- 循环上述过程，直到最终加入集群
+
+![img](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/redis-cluster-1.png)
+
+消息体在Redis内部采用`clusterMsg Data` 结构声明，定义发送消息的数据。其中ping、meet、pong都采用clusterMsgDataGossip数组作为消息体数据，实际消息类型使用消息头的type属性区分。每个消息体包含该节点的多个clusterMsgDataGossip结构数据，用于信息交换。
+
+当接收到ping、meet消息时,接收节点会解析消息内容并根据自身的识别情况做出相应处理。
+
+#### 故障转移（高可用）
+
+##### 故障发现
 
 
+
+##### 故障恢复
+
+
+
+
+
+#### 数据访问
+
+Redis cluster采用去中心化的架构，集群的主节点各自负责一部分槽，客户端如何确定key到底会映射到哪个节点上呢？
+
+在cluster模式下，**节点对请求的处理过程**如下：
+
+- 检查当前key是否存在当前NODE？ 
+  - 通过crc16（key）/16384计算出slot
+  - 查询负责该slot负责的节点，得到节点指针
+  - 该指针与自身节点比较
+- 若slot不是由自身负责，则返回MOVED重定向
+- 若slot由自身负责，且key在slot中，则返回该key对应结果
+- 若key不存在此slot中，检查该slot是否正在迁出（MIGRATING）？
+- 若key正在迁出，返回ASK错误重定向客户端到迁移的目的服务器上
+- 若Slot未迁出，检查Slot是否导入中？
+- 若Slot导入中且有ASKING标记，则直接操作
+- 否则返回MOVED重定向
+
+##### MOVED重定向
+
+![img](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/redis-cluster-3.png)
+
+- 槽命中：直接返回结果
+- 槽不命中：即当前键命令所请求的键不在当前请求的节点中，则当前节点会向客户端发送一个Moved 重定向，客户端根据Moved 重定向所包含的内容找到目标节点，再一次发送命令。
+
+##### ACK重定向
+
+Ask重定向发生于集群伸缩时，集群伸缩会导致槽迁移，当我们去源节点访问时，此时数据已经可能已经迁移到了目标节点，使用Ask重定向来解决此种情况。
+
+![img](Redis%E6%A0%B8%E5%BF%83%E6%9C%BA%E5%88%B6.assets/redis-cluster-5.png)
+
+
+
+### 总结
+
+#### Redis集群和Redis主从架构的区别？
+
+- Redis主从指的是一主多从，Redis集群指的是多主多从。
+- 
+
+#### Redis集群功能限制
+
+Redis集群相对单机在功能上存在一些限制，需要开发人员提前了解，在使用时做好规避。限制如下:
+
+1、 key批量操作支持有限。如mset、mget，目前只支持具有相同slot值的key执行批量操作。对于映射为不同slot值的key由于执行mget、mget等操作可能存在于多个节点上因此不被支持。
+
+2、key事务操作支持有限。同理只支持多key在同一节点上的事务操作，当多个key分布在不同的节点上时无法使用事务功能。
+
+3、key作为数据分区的最小粒度，因此不能将一个大的键值对象如hash、list等映射到不同的节点。
+
+4、不支持多数据库空间。单机下的Redis可以支持16个数据库，集群模式下只能使用一个数据库空间,即 db 0。
+
+5、复制结构只支持一层，从节点只能复制主节点，不支持嵌套树状复制结构。
 
 ## 内存淘汰机制
 
