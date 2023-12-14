@@ -43,15 +43,65 @@ SpringBoot的自动装配主要是依赖@EnableAutoConfiguration注解实现的�
 
 ### SpringBoot配置文件的优先级？
 
+SpringBoot提供了多种配置方式，并且对配置文件的目录结构和文件格式都做了优先级设置，因此要从多个方面来看。
 
+（一）首先是在常用的配置文件方法，读取顺序优先级为：
+
+1. 命令行参数，例如`java  -jar  app.jar --server.port=4321`
+2. JVM系统属性，通过-Dxxx进行设置，例如`java -Dserver.port=1234 -jar  app.jar`
+3. 系统环境属性，在系统环境中设置的属性值(通过System.getenv()方法获取)
+4. jar包外部的application-{profile}.properties/yml配置文件，如果没有指明激活的profile，则默认为default。
+5. jar包内部的application-{profile}.properties/yml配置文件，如果没有指明激活的profile，则默认为default。
+6. jar包外部的application.properties/yml配置文件。
+7. jar包内部的application.properties/yml配置文件。
+8. 通过@Configuration注解类上的@PropertySource注解引入的配置文件。
+
+（二）其中，如果是Jar包内部配置目录结构，跟随以下的优先级：
+
+1. config目录下的配置文件
+2. 根目录下的配置文件
+3. resources下的config目录下的配置文件
+4. resources目录下的配置文件
+
+（三）如果是jar包外部的目录结构，优先级为：
+
+1. jar包所在目录中的/config文件夹下的配置文件
+2. jar包所在目录中的配置文件
+
+（四）当相同目录结构下，配置文件格式层面
+
+优先级为：properties > yml > yaml
+
+（五）springBoot默认读取bootstrap和application配置文件，且前者优先级更高。
 
 ### application.yml与bootstrap.yml的区别？
 
+bootstrap.yml是被一个父级 Spring ApplicationContext 加载的，用来程序引导时执行，应用于更加早期配置信息读取，bootstrap先于 application加载。
 
+比如常见配置Spring.application，spirng cloud config等信息，进行提前配置。
+
+application.yml是由子类ApplicationContext加载的， 应用程序特有配置信息，可以用来配置后续各个模块中需使用的公共参数等。
+
+此外，bootstrap的配置参数不能被application覆盖。
 
 ### 有哪些常用的SpringBootStarter？
 
+- spring-boot-starter-web，用于构建Web应用程序的starter，包括Spring MVC和内嵌Tomcat
+- spring-boot-starter-test，单元测试的starter
+- mybatis-boot-starter，mybatis集成的starter
+- pagehelper-spring-boot-starter，集成分页插件
+- dynamic-datasource-spring-boot-starter，多源数据库集成，用@DS注解选择在哪个数据库上操作
+- druid-spring-boot-starter，连接池集成
+- spring-boot-starter-data-redis，与redis集成的starter
+- spring-boot-starter-json，集成Jackson包
 
+在Springcloud的交互中，还会用到：
+
+- spring-cloud-starter-openfeign，openfeigin声明调用
+- spring-cloud-starter-alibaba-nacos-discovery，nacos服务发现集成
+- spring-cloud-starter-alibaba-nacos-config，配置中心集成
+- spring-cloud-starter-gateway，集成网关
+- spring-cloud-starter-alibaba-sentinel ，sentinel集成
 
 
 
