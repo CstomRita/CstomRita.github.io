@@ -823,36 +823,123 @@ MyBaits会首先对其进行预编译，将#{user_ids}替换成?占位符，然�
 
 由于在两端加了双引号，因此输入的内容就是一个普通字符串，其中的#注释和or 1=1都不会生效，这样就无法登陆成功了，从而有效防止了SQL注入。
 
-### 懒加载机制(多表查询)
+### 多表查询机制
 
-懒加载机制的应用场景在于级联查询。
+#### 多表查询方式总结
 
-有A、B两个对象，在A对象中引用了B对象。Java层面上，通俗来说就是通过A对象的getter方法可以拿到B对象的引用。数据库层面，其实就是两表的关联查询。
+##### 三种查询方式
 
-#### 多表查询方式
-
-> [!note]在Mybatis中，多表查询可以分为关联查询和级联查询。
+> [!note]在Mybatis中，多表查询方式可以分为三种：
 >
-> - 多表关联是指两个表通过主外键在一条SQL中完成所有数据的提取，即在一个SQL中使用JOIN关联多个表。
->
-> - 多表级联查询是指通过一个对象获取与他关联的另外一个对象，执行SQL语句是多条，级联查询使用select标签，使用多个SQL语句分步查询，实体 Bean 赋值。
+> - 多表JOIN关联是指两个表通过主外键在一条SQL中完成所有数据的提取，即在一个SQL中使用JOIN关联多个表。
+>- 多表级联/嵌套查询是指通过一个对象获取与他关联的另外一个对象，执行SQL语句是多条，级联查询使用select标签，使用多个SQL语句分步查询，实体 Bean 赋值。
+> - 单表查询后，在业务层合并拼接
 
-使用表间的关联查询，有几种方式：
+##### 嵌套查询会产生N+1的问题
 
-- 使用JOIN连表查询SQL，resultMap组合映射关系
-- 使用JOIN连表查询SQL，使用级联标签和javaType属性
-- 使用级联映射的select标签，分步查询，通过两次或多次查询，为一对一关系的实体 Bean 赋值。
+###### 产生原因
 
-本节重点关注第三种，级联映射。
+在嵌套查询下，执行了一个单独的 SQL 语句来获取结果的一个列表，并对列表返回的每条记录，需要额外执行一个 select 查询语句来为每条记录加载详细信息，在一对多的情况下，额外多生成N条SQL执行，再加上最开始的一个SQL，一共执行了N+1条SQL语句。
 
-##### 关联查询
+在数据库系统中，数据库查询通常是瓶颈，查询次数的增加会导致性能降低。
+
+###### 解决方案
+
+解决方法包括：
+
+1. 在Sql语句中使用join语句连接多张表并进行查询，并使用上文的第一种方法构造结果映射，这里就不多提了；
+2. 使用懒加载技术，延迟“N查询”部分中各操作被执行的时间节点
+3. 合并N查询为一个查询，通过使用Sql的关键字In可以达成这一点
+4. 使用Mybatis3.2.3版本后，使用存储过程+标签ResultSets
+
+###### ResultSets
+
+某些数据库允许存储过程返回多个结果集，或一次性执行多个语句，每个语句返回一个结果集，可以利用这个特性，在不使用连接的情况下，只访问数据库一次就能获得相关数据。
+
+- column：当使用多个结果集时，该属性指定结果集中用于与 foreignColumn 匹配的列（多个列名以逗号隔开），以识别关系中的父类型与子类型。
+- foreignColumn：指定外键对应的列名，指定的列将与父类型中 column 的给出的列进行匹配。
+- resultSet：指定用于加载复杂类型的结果集名字。例如：
+
+例如：
+
+1、首先新建一个简单的存储过程，存储过程执行两个查询语句返回两个结果集。
+
+第一个结果集会返回User的结果，第二个则返回Wife的结果，如下
+
+```sql
+DELIMITER $$
+CREATE PROCEDURE `uwife`(IN `userId` INT)
+BEGIN
+	SELECT * FROM mybatis_user WHERE id = userId;
+	SELECT * FROM mybatis_wife WHERE user_id = userId;
+END $$
+```
+
+2、在映射语句中，必须通过 resultSets 属性为每个结果集指定一个名字，多个名字使用逗号隔开。
+
+```xml
+<select id="selectByResultSet" resultSets="uresult,wresult" 
+ resultMap="userResultByResultSet" statementType="CALABLE">
+     {call uwife(#{userId,jdbcType=INTEGER,mode=IN})}
+ </select>
+```
+
+3、指定使用 “wresult” 结果集的数据来填充 “wife” 关联：
+
+```xml
+<resultMap id="userResultByResultSet" type="User">
+        <id property="id" column="id"/>
+        <result property="name" column="name"/>
+        <result property="sex" column="sex"/>
+        <result property="age" column="age"/>
+        <result property="province" column="province"/>
+        <result property="city" column="city"/>
+        <result property="createdTime" column="created_time"/>
+        <result property="createdBy" column="created_by"/>
+        <result property="updatedTime" column="updated_time"/>
+        <result property="updatedBy" column="updated_by"/>
+        <association property="wife" javaType="Wife" resultSet="wresult" column="id" foreignColumn="user_id">
+            <id property="wifeId" column="wife_id"/>
+            <result property="userId" column="user_id"/>
+            <result property="wifeName" column="wife_name"/>
+        </association>
+    </resultMap>
+```
+
+##### 性能对比
+
+- 业务层管理的优势：
+
+1. 让缓存的效率更高。许多应用程序可以方便地缓存单表查询对应的结果对象。如果关联中的某个表发生了变化，那么就无法使用查询缓存了，而拆分后，如果某个表很少改变，那么基于该表的查询就可以重复利用查询缓存结果
+2. 将查询分解后，执行单个查询可以减少锁的竞争。
+3. 在应用层做关联，可以更容易对数据库进行拆分，更容易做到高性能和可扩展
+4. 查询本身效率也可能会有所提升。查询id集的时候，使用IN（）代替关联查询，可以让MySQL按照ID顺序进行查询，这可能比随机的关联要更高效。
+5. 可以减少冗余记录的查询。在应用层做关联查询，意味着对于某条记录应用只需要查询一次，而在数据库中做关联查询，则可能需要重复地访问一部分数据。从这点看，这样的重构还可能会减少网络和内存的消艳。
+
+- JOIN查询的优势：
+
+<font color=red>关联查询的好处是可以做分页，</font>可以用副表的字段做查询条件，在查询的时候，将副表匹配到的字段作为结果集，用主表去in它。
+
+但是问题来了，如果匹配到的数据量太大就不行了，也会导致返回的分页记录跟实际的不一样，解决的方法可以交给前端，一次性查询，让前端分批显示就可以了，这种解决方案的前提是数据量不太，因为sql本身长度有限。
+
+- 不推荐JOIN的原因：
+
+1. DB承担的业务压力大，能减少负担就减少。当表处于百万级别后，join导致性能下降；
+2. 分布式的分库分表。这种时候是不建议跨库join的。目前mysql的分布式中间件，跨库join表现不良。
+3. 修改表的schema，单表查询的修改比较容易，join写的sql语句要修改，不容易发现，成本比较大，当系统比较大时，不好维护。
+
+- 不推荐嵌套查询的原因：
+
+嵌套查询就是单独的N次循环查询，会产生N+1问题，<font color=red>**如果业务层单单是简单的for循环N次来二次查询，其实和嵌套查询效果是一样的N+1。但其实业务层的优势在于可以使用IN来关联查询，这样处理会优于嵌套查询。**</font>
+
+#### 关联JOIN查询
 
 在关联查询中，SQL即为使用JOIN关联的一条SQL，对结果集合的映射可分为：
 
 - 自定义ResultMap
 - 根据一对一/一对多映射ResultMap
 
-###### 自定义ResultMap
+##### 自定义ResultMap
 
 写一条sql语句，比较直接。
 
@@ -875,7 +962,7 @@ MyBaits会首先对其进行预编译，将#{user_ids}替换成?占位符，然�
         <result column="departmentId" property="department.id"></result>
         <result column="departmentName" property="department.departmentName"></result>
     </resultMap>
-###### 使用映射标签映射ResultMap
+##### 使用映射标签映射ResultMap
 
 这种方法个人感觉跟第一种没有本质上的区别，还是一条sql语句对两张表进行关联查询，只不过在结果集映射的时候有一些不同，引入了association等映射标签。
 
@@ -919,7 +1006,7 @@ resultMap在进行结果映射时，有一定的区别：
 >
 > 无论是所谓的关联查询还是级联查询，都可以使用这些标签映射ResultMap。这些标签并不是某个确定的查询才能使用的标签，而是根据标签的用法确定是哪种技术路线：关联查询/级联查询。
 
-##### 级联查询(select标签)
+#### 级联/嵌套查询(select标签)
 
 与前面写法有比较大的不同，使用association的select标签，可以将原本两表联查的一条sql语句拆分为两条简单的sql语句。
 
@@ -1078,7 +1165,7 @@ sql部分，这里就分两部分了：
           </resultMap>  
   ```
 
-#### 延迟规则
+#### 嵌套查询下的懒加载机制
 
 ##### 三种延迟策略
 
@@ -1147,7 +1234,7 @@ MyBatis根据对关联对象查询的select语句的执行时机，分为三种�
 
 这样的话，该语句会覆盖全局配置的lazyLoadingEnabled属性，适用的场景是在全局配置加载策略后，想针对某个语句进行配置，局部配置将覆盖全局配置。
 
-#### 懒加载原理
+#### 懒加载机制原理
 
 > 它的原理是，使用 CGLIB 或 Javassist( 默认 ) 创建目标对象的代理对象。当调用代理对象的延迟加载属性的 getting 方法时，进入拦截器方法。比如调用 a.getB().getName() 方法，进入拦截器的 invoke(...) 方法，发现 a.getB() 需要延迟加载时，那么就会单独发送事先保存好的查询关联 B 对象的 SQL ，把 B 查询上来，然后调用 a.setB(b) 方法，于是 a 对象 b 属性就有值了，接着完成 a.getB().getName() 方法的调用。这就是延迟加载的基本原理。
 
