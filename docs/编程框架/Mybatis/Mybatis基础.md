@@ -171,7 +171,7 @@ List<Book> books = mapper.fuzzyQuery("%萨%");
 
 #### 主键自增
 
-- 方式1：<insert useGeneratedKeys>标签
+- 方式1：`<insert useGeneratedKeys>`标签
 
 useGeneratedKeys：表示要使用自增的主键
 
@@ -185,9 +185,9 @@ keyProperty：表示把自增的主键赋给JavaBean的哪个成员变量。
 
 以添加Dept对象为例，添加前Dept对象的deptno是空的，添加完毕后可以通过getDeptno() 获取自增的主键。
 
-- 方式2：<select key>标签
+- 方式2：`<select key>`标签
 
-order：取值AFTER|BEFORE，表示在新增之后|之前执行<selectKey>中的SQL命令
+order：取值AFTER|BEFORE，表示在新增之后|之前执行`<selectKey>`中的SQL命令
 
 keyProperty：执行select @@identity后结果填充到哪个属性中
 
@@ -225,7 +225,7 @@ resultType：结果类型。
 
 ##### where
 
-用于处理where关键字，当使用<where>标签时，不再需要where 1=1 这种处理了。
+用于处理where关键字，当使用`<where>`标签时，不再需要where 1=1 这种处理了。
 
 ```xml
 select * from emp
@@ -1056,7 +1056,7 @@ sql部分，这里就分两部分了：
 
 ##### 一对一/多对一
 
-使用<association>标签。
+使用`<association>`标签。
 
 ```xml
 <resultMap id="empMap" type="com.mybatis.bean.Employee">
@@ -1072,7 +1072,7 @@ sql部分，这里就分两部分了：
 </resultMap>
 ```
 
-在 <association> 元素中通常使用以下属性。
+在` <association>` 元素中通常使用以下属性。
 
 - property：指定映射到实体类的对象属性。
 - column：指定表中对应的字段（即查询返回的列名）。
@@ -1709,7 +1709,7 @@ public boolean equals(Object object) {
 
 ##### 配置
 
-1）全局开关：在sqlMapConfig.xml文件中的<settings>标签配置开启二级缓存
+1）全局开关：在sqlMapConfig.xml文件中的`<settings>`标签配置开启二级缓存
 
 ```
 <settings>
@@ -1950,5 +1950,5 @@ MyBatis定义了缓存接口Cache。我们可以通过实现Cache接口来**自�
 
 - 实现org.apache.ibatis.cache.Cache接口
 - 用作二级缓存
-- 使用<cache type="">来配置。
+- 使用`<cache type="">`来配置。
 
