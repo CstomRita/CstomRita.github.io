@@ -2,6 +2,7 @@
 - MySQL
   - [MySQL基础](/数据库/MySQL/MySQL基础.md)
   - [MySQL事务](/数据库/MySQL/事务.md)
-  - [MySQL优化技术](/数据库/MySQL/MySQL性能优化.md)
+  - [MySQL分库性能优化](/数据库/MySQL/MySQL性能优化.md)
+  - [MySQL高可用方案](/数据库/MySQL/MySQL高可用方案.md)
   - [MySQL实战案例](/数据库/MySQL/MySQL案例.md)
 - [MySQL八股](/数据库/MySQL/MySQL八股.md)
