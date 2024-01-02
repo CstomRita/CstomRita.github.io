@@ -9,10 +9,7 @@
 >
 >*Only practice makes perfect !* 
 
-<span id="busuanzi_container_site_pv" style='display:none'>👀 本站总访问量：<span id="busuanzi_value_site_pv"></span> 次
-</span> 
 
-👀 本站总访问量：<span id="busuanzi_value_site_pv"></span> 次
 
 
 Hi，📎📎📎📎<span id="sitetime"></span>
